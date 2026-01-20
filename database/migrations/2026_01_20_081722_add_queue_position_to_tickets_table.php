@@ -11,10 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('tickets', function (Blueprint $table) {
-            $table->integer('queue_position')->nullable()->after('status');
-            $table->index(['queue_id', 'status', 'queue_position'], 'idx_tickets_queue_status_position');
-        });
+        // Only add queue_position if tickets table exists and column doesn't exist
+        if (Schema::hasTable('tickets') && !Schema::hasColumn('tickets', 'queue_position')) {
+            Schema::table('tickets', function (Blueprint $table) {
+                $table->integer('queue_position')->nullable()->after('status');
+                $table->index(['queue_id', 'status', 'queue_position'], 'idx_tickets_queue_status_position');
+            });
+        }
     }
 
     /**
@@ -22,9 +25,13 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('tickets', function (Blueprint $table) {
-            $table->dropIndex('idx_tickets_queue_status_position');
-            $table->dropColumn('queue_position');
-        });
+        if (Schema::hasTable('tickets') && Schema::hasColumn('tickets', 'queue_position')) {
+            Schema::table('tickets', function (Blueprint $table) {
+                if (Schema::hasIndex('tickets', 'idx_tickets_queue_status_position')) {
+                    $table->dropIndex('idx_tickets_queue_status_position');
+                }
+                $table->dropColumn('queue_position');
+            });
+        }
     }
 };

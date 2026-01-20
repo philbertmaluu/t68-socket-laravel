@@ -30,26 +30,6 @@ class Ticket extends Model
      */
     protected $table = 'tickets';
 
-    /**
-     * The primary key for the model.
-     *
-     * @var string
-     */
-    protected $primaryKey = 'id';
-
-    /**
-     * Indicates if the IDs are auto-incrementing.
-     *
-     * @var bool
-     */
-    public $incrementing = false;
-
-    /**
-     * The "type" of the primary key ID.
-     *
-     * @var string
-     */
-    protected $keyType = 'string';
 
     /**
      * The attributes that are mass assignable.
@@ -57,7 +37,6 @@ class Ticket extends Model
      * @var array<int, string>
      */
     protected $fillable = [
-        'id',
         'ticket_number',
         'service_type',
         'service_id',
