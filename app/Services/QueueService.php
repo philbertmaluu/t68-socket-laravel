@@ -18,9 +18,10 @@ class QueueService
     {
         $position = $this->calculateQueuePosition($ticket);
         
-        $ticket->update([
-            'queue_position' => $position,
-        ]);
+        // Use withoutEvents to prevent triggering updated event (infinite loop)
+        $ticket->withoutEvents(function () use ($ticket, $position) {
+            $ticket->update(['queue_position' => $position]);
+        });
 
         // Recalculate positions for other tickets if this is a priority ticket
         if ($ticket->priority && $position === 0) {
@@ -114,8 +115,11 @@ class QueueService
             }
 
             // Only update if position changed
+            // Use withoutEvents to prevent infinite loop from triggering updated event
             if ($ticket->queue_position !== $newPosition) {
-                $ticket->update(['queue_position' => $newPosition]);
+                $ticket->withoutEvents(function () use ($ticket, $newPosition) {
+                    $ticket->update(['queue_position' => $newPosition]);
+                });
                 $updatedTickets[] = $ticket;
             }
         }
@@ -151,9 +155,10 @@ class QueueService
     {
         $queueId = $ticket->queue_id;
         
-        $ticket->update([
-            'queue_position' => null,
-        ]);
+        // Use withoutEvents to prevent triggering updated event
+        $ticket->withoutEvents(function () use ($ticket) {
+            $ticket->update(['queue_position' => null]);
+        });
 
         // Recalculate positions for remaining tickets
         $this->recalculateQueuePositions($queueId);

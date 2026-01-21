@@ -102,14 +102,14 @@ class Ticket extends Model
         static::updated(function (Ticket $ticket) {
             $oldStatus = $ticket->oldStatus;
             $newStatus = $ticket->status;
+            
+            // Get changed attributes to check if only queue_position changed
+            $changedAttributes = array_keys($ticket->getChanges());
+            $onlyQueuePositionChanged = count($changedAttributes) === 1 && 
+                                       in_array('queue_position', $changedAttributes);
 
-            // Fire general status changed event
-            if ($oldStatus !== $newStatus) {
-                event(new TicketStatusChanged($ticket, $oldStatus, $newStatus));
-            }
-
-            // Handle queue position updates when status changes
-            if ($oldStatus !== $newStatus) {
+            // Skip queue recalculation if only queue_position changed (prevents infinite loop)
+            if (!$onlyQueuePositionChanged && $oldStatus !== $newStatus) {
                 $queueService = app(QueueService::class);
                 
                 // Recalculate queue positions when ticket is processed or removed
@@ -124,13 +124,20 @@ class Ticket extends Model
                 }
             }
 
+            // Fire general status changed event
+            if ($oldStatus !== $newStatus) {
+                event(new TicketStatusChanged($ticket, $oldStatus, $newStatus));
+            }
+
             // Fire specific events based on new status
-            match ($newStatus) {
-                'called' => event(new TicketCalled($ticket)),
-                'serving' => event(new TicketServing($ticket)),
-                'completed' => event(new TicketCompleted($ticket)),
-                default => null,
-            };
+            if ($oldStatus !== $newStatus) {
+                match ($newStatus) {
+                    'called' => event(new TicketCalled($ticket)),
+                    'serving' => event(new TicketServing($ticket)),
+                    'completed' => event(new TicketCompleted($ticket)),
+                    default => null,
+                };
+            }
         });
     }
 
