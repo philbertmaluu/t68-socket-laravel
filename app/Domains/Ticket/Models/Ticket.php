@@ -8,15 +8,17 @@ use App\Events\TicketCreated;
 use App\Events\TicketServing;
 use App\Events\TicketStatusChanged;
 use App\Jobs\QueueTicket;
+use App\Shared\Traits\Auditable;
 use App\Shared\Traits\HasTenant;
 use App\Services\QueueService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Ticket extends Model
 {
-    use HasFactory, HasTenant;
+    use HasFactory, HasTenant, SoftDeletes, Auditable;
 
     protected $oldStatus = null;
     protected $table = 'tickets';
@@ -42,6 +44,9 @@ class Ticket extends Model
         'transferred_to_counter_id',
         'office_id',
         'queue_position',
+        'created_by',
+        'updated_by',
+        'deleted_by',
     ];
 
     protected function casts(): array
@@ -56,6 +61,7 @@ class Ticket extends Model
             'completed_at' => 'datetime',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 

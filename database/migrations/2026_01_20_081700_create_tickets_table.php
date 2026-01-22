@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('tickets', function (Blueprint $table) {
             $table->id();
-            $table->string('tenant_id', 50);
+            $table->foreignId('tenant_id');
             $table->string('ticket_number', 50);
             $table->string('service_type', 200);
             $table->string('service_id', 50)->nullable();
@@ -33,7 +33,11 @@ return new class extends Migration
             $table->string('transferred_to_counter_id', 50)->nullable();
             $table->string('office_id', 50);
             $table->integer('queue_position')->nullable();
+            $table->string('created_by', 50)->nullable();
+            $table->string('updated_by', 50)->nullable();
+            $table->string('deleted_by', 50)->nullable();
             $table->timestamps();
+            $table->softDeletes();
 
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
@@ -51,6 +55,7 @@ return new class extends Migration
             $table->index('member_number', 'idx_tickets_member_number');
             $table->index('office_id', 'idx_tickets_office_id');
             $table->index(['queue_id', 'status', 'queue_position'], 'idx_tickets_queue_status_position');
+            $table->index('deleted_at', 'idx_tickets_deleted_at');
         });
     }
 

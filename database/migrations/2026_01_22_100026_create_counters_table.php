@@ -13,13 +13,17 @@ return new class extends Migration
     {
         Schema::create('counters', function (Blueprint $table) {
             $table->id();
-            $table->string('tenant_id', 50);
+            $table->foreignId('tenant_id');
             $table->string('name', 200);
-            $table->string('type', 50);
-            $table->string('service_id', 50);
+            $table->foreignId('type');
+            $table->foreignId('service_id');
             $table->string('status', 20)->default('ACTIVE')->comment("Values: 'ACTIVE', 'INACTIVE', 'MAINTENANCE'");
             $table->string('office_id', 50);
+            $table->string('created_by', 50)->nullable();
+            $table->string('updated_by', 50)->nullable();
+            $table->string('deleted_by', 50)->nullable();
             $table->timestamps();
+            $table->softDeletes();
 
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
@@ -32,6 +36,7 @@ return new class extends Migration
             $table->index('status', 'idx_counters_status');
             $table->index('type', 'idx_counters_type');
             $table->index('service_id', 'idx_counters_service_id');
+            $table->index('deleted_at', 'idx_counters_deleted_at');
         });
     }
 

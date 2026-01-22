@@ -2,15 +2,19 @@
 
 namespace App\Domains\Service\Models;
 
+use App\Domains\Tenant\Models\Tenant;
+use App\Domains\Service\ServiceDocument\Models\ServiceDocument;
+use App\Shared\Traits\Auditable;
 use App\Shared\Traits\HasTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Service extends Model
 {
-    use HasFactory, HasTenant;
+    use HasFactory, HasTenant, SoftDeletes, Auditable;
 
     protected $table = 'services';
     protected $primaryKey = 'id';
@@ -26,6 +30,9 @@ class Service extends Model
         'status',
         'region_id',
         'office_id',
+        'created_by',
+        'updated_by',
+        'deleted_by',
     ];
 
     protected function casts(): array
@@ -34,6 +41,7 @@ class Service extends Model
             'estimated_time' => 'integer',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 
@@ -82,6 +90,6 @@ class Service extends Model
 
     public function tenant(): BelongsTo
     {
-        return $this->belongsTo(\App\Domains\Tenant\Models\Tenant::class, 'tenant_id', 'id');
+        return $this->belongsTo(Tenant::class, 'tenant_id', 'id');
     }
 }

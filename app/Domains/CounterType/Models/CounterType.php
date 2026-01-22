@@ -2,15 +2,17 @@
 
 namespace App\Domains\CounterType\Models;
 
+use App\Shared\Traits\Auditable;
 use App\Shared\Traits\HasTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CounterType extends Model
 {
-    use HasFactory, HasTenant;
+    use HasFactory, HasTenant, SoftDeletes, Auditable;
 
     public $incrementing = false;
     protected $keyType = 'string';
@@ -21,11 +23,15 @@ class CounterType extends Model
         'name',
         'description',
         'status',
+        'created_by',
+        'updated_by',
+        'deleted_by',
     ];
 
     protected $casts = [
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
     public const STATUS_ACTIVE = 'ACTIVE';

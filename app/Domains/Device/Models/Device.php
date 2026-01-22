@@ -2,15 +2,17 @@
 
 namespace App\Domains\Device\Models;
 
+use App\Shared\Traits\Auditable;
 use App\Shared\Traits\HasTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Crypt;
 
 class Device extends Model
 {
-    use HasFactory, HasTenant;
+    use HasFactory, HasTenant, SoftDeletes, Auditable;
 
     public $incrementing = false;
     protected $keyType = 'string';
@@ -28,12 +30,16 @@ class Device extends Model
         'password',
         'last_seen',
         'notes',
+        'created_by',
+        'updated_by',
+        'deleted_by',
     ];
 
     protected $casts = [
         'last_seen' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
     protected $hidden = [

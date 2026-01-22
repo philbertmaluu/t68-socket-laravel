@@ -13,14 +13,18 @@ return new class extends Migration
     {
         Schema::create('services', function (Blueprint $table) {
             $table->id();
-            $table->string('tenant_id', 50);
+            $table->foreignId('tenant_id');
             $table->string('name', 200);
             $table->text('description')->nullable();
             $table->integer('estimated_time')->comment('in minutes');
             $table->string('status', 20)->default('ACTIVE')->comment("Values: 'ACTIVE', 'INACTIVE'");
             $table->string('region_id', 50);
             $table->string('office_id', 50);
+            $table->string('created_by', 50)->nullable();
+            $table->string('updated_by', 50)->nullable();
+            $table->string('deleted_by', 50)->nullable();
             $table->timestamps();
+            $table->softDeletes();
 
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
@@ -31,6 +35,7 @@ return new class extends Migration
             $table->index('office_id', 'idx_services_office_id');
             $table->index('region_id', 'idx_services_region_id');
             $table->index('status', 'idx_services_status_index');
+            $table->index('deleted_at', 'idx_services_deleted_at');
         });
     }
 

@@ -2,16 +2,18 @@
 
 namespace App\Domains\Counter\Models;
 
+use App\Shared\Traits\Auditable;
 use App\Shared\Traits\HasTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Domains\Tenant\Models\Tenant;
 
 class Counter extends Model
 {
-    use HasFactory, HasTenant;
+    use HasFactory, HasTenant, SoftDeletes, Auditable;
 
     protected $table = 'counters';
     protected $primaryKey = 'id';
@@ -24,6 +26,9 @@ class Counter extends Model
         'service_id',
         'status',
         'office_id',
+        'created_by',
+        'updated_by',
+        'deleted_by',
     ];
 
     protected function casts(): array
@@ -31,6 +36,7 @@ class Counter extends Model
         return [
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 

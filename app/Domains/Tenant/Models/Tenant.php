@@ -8,19 +8,19 @@ use App\Domains\Device\Models\Device;
 use App\Domains\Service\Models\Service;
 use App\Domains\Service\ServiceDocument\Models\ServiceDocument;
 use App\Domains\Ticket\Models\Ticket;
+use App\Shared\Traits\Auditable;
 use App\Shared\Traits\HasTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Tenant extends Model
 {
-    use HasFactory, HasTenant;
+    use HasFactory, HasTenant, SoftDeletes, Auditable;
 
     protected $table = 'tenants';
     protected $primaryKey = 'id';
-    public $incrementing = false;
-    protected $keyType = 'string';
 
     protected $fillable = [
         'id',
@@ -29,6 +29,9 @@ class Tenant extends Model
         'database',
         'is_active',
         'settings',
+        'created_by',
+        'updated_by',
+        'deleted_by',
     ];
 
     protected function casts(): array
@@ -38,6 +41,7 @@ class Tenant extends Model
             'settings' => 'array',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 

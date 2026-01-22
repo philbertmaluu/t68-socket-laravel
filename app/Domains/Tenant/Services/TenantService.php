@@ -17,9 +17,9 @@ class TenantService
         $this->repository = new TenantRepository();
     }
 
-    public function findById(string $id): ?Tenant
+    public function findById(int|string $id, bool $withTrashed = false): ?Tenant
     {
-        return $this->repository->findById($id);
+        return $this->repository->findById($id, $withTrashed);
     }
 
     public function findAll(array $filters = []): Collection
@@ -51,10 +51,17 @@ class TenantService
         });
     }
 
-    public function deleteTenant(Tenant $tenant): bool
+    public function deleteTenant(Tenant $tenant, bool $force = false): bool
+    {
+        return TransactionHelper::execute(function () use ($tenant, $force) {
+            return $this->repository->delete($tenant, $force);
+        });
+    }
+
+    public function restoreTenant(Tenant $tenant): bool
     {
         return TransactionHelper::execute(function () use ($tenant) {
-            return $this->repository->delete($tenant);
+            return $this->repository->restore($tenant);
         });
     }
 

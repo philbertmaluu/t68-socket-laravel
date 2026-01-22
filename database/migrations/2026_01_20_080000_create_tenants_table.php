@@ -18,10 +18,15 @@ return new class extends Migration
             $table->string('database')->nullable();
             $table->boolean('is_active')->default(true);
             $table->json('settings')->nullable();
+            $table->string('created_by', 50)->nullable();
+            $table->string('updated_by', 50)->nullable();
+            $table->string('deleted_by', 50)->nullable();
             $table->timestamps();
+            $table->softDeletes();
 
             // Indexes
             $table->index('is_active', 'idx_tenants_is_active');
+            $table->index('deleted_at', 'idx_tenants_deleted_at');
         });
     }
 

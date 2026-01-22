@@ -57,10 +57,11 @@ class QueueService
             return 0;
         }
 
-        // Get all tickets ahead in the queue
+        // Get all tickets ahead in the queue (exclude soft-deleted)
         $ticketsAhead = Ticket::where('queue_id', $ticket->queue_id)
             ->whereIn('status', ['waiting', 'called'])
             ->where('id', '!=', $ticket->id)
+            ->whereNull('deleted_at')
             ->where(function ($query) use ($ticket) {
                 // Tickets with lower position number (higher priority)
                 $query->where('queue_position', '<', $ticket->queue_position)
@@ -92,9 +93,10 @@ class QueueService
      */
     public function recalculateQueuePositions(string $queueId, ?string $excludeTicketId = null): void
     {
-        // Get all active tickets in the queue (waiting or called status)
+        // Get all active tickets in the queue (waiting or called status, exclude soft-deleted)
         $tickets = Ticket::where('queue_id', $queueId)
             ->whereIn('status', ['waiting', 'called'])
+            ->whereNull('deleted_at')
             ->when($excludeTicketId, function ($query) use ($excludeTicketId) {
                 $query->where('id', '!=', $excludeTicketId);
             })
@@ -140,6 +142,7 @@ class QueueService
     {
         return Ticket::where('queue_id', $queueId)
             ->whereIn('status', ['waiting', 'called'])
+            ->whereNull('deleted_at')
             ->orderBy('queue_position', 'asc')
             ->orderBy('created_at', 'asc')
             ->first();
@@ -177,10 +180,11 @@ class QueueService
             return 0;
         }
 
-        // Count tickets ahead in the queue (waiting or called status)
+        // Count tickets ahead in the queue (waiting or called status, exclude soft-deleted)
         $ticketsAhead = Ticket::where('queue_id', $ticket->queue_id)
             ->whereIn('status', ['waiting', 'called'])
             ->where('id', '!=', $ticket->id)
+            ->whereNull('deleted_at')
             ->where(function ($query) {
                 // Only count non-priority tickets for position calculation
                 $query->where('priority', false)

@@ -2,14 +2,16 @@
 
 namespace App\Domains\Counter\Models;
 
+use App\Shared\Traits\Auditable;
 use App\Shared\Traits\HasTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class CounterClerk extends Model
 {
-    use HasFactory, HasTenant;
+    use HasFactory, HasTenant, SoftDeletes, Auditable;
 
     protected $table = 'counter_clerk';
 
@@ -20,6 +22,9 @@ class CounterClerk extends Model
         'is_active',
         'assigned_at',
         'unassigned_at',
+        'created_by',
+        'updated_by',
+        'deleted_by',
     ];
 
     protected function casts(): array
@@ -30,6 +35,7 @@ class CounterClerk extends Model
             'unassigned_at' => 'datetime',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 

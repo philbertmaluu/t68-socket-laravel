@@ -13,13 +13,17 @@ return new class extends Migration
     {
         Schema::create('counter_clerk', function (Blueprint $table) {
             $table->id();
-            $table->string('tenant_id', 50);
+            $table->foreignId('tenant_id');
             $table->foreignId('counter_id')->constrained('counters')->onDelete('cascade');
             $table->string('clerk_id', 50);
             $table->boolean('is_active')->default(true);
             $table->timestamp('assigned_at')->useCurrent();
             $table->timestamp('unassigned_at')->nullable();
+            $table->string('created_by', 50)->nullable();
+            $table->string('updated_by', 50)->nullable();
+            $table->string('deleted_by', 50)->nullable();
             $table->timestamps();
+            $table->softDeletes();
 
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
@@ -30,6 +34,7 @@ return new class extends Migration
             $table->index('clerk_id', 'idx_counter_clerk_clerk_id');
             $table->index('is_active', 'idx_counter_clerk_is_active');
             $table->index(['counter_id', 'clerk_id'], 'idx_counter_clerk_counter_clerk');
+            $table->index('deleted_at', 'idx_counter_clerk_deleted_at');
         });
     }
 

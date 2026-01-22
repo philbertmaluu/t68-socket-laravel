@@ -8,10 +8,16 @@ use Illuminate\Database\Eloquent\Collection;
 
 class TenantRepository
 {
-    public function findById(string $id): ?Tenant
+    public function findById(string $id, bool $withTrashed = false): ?Tenant
     {
         try {
-            return Tenant::withoutTenant()->find($id);
+            $query = Tenant::withoutTenant();
+            
+            if ($withTrashed) {
+                $query->withTrashed();
+            }
+            
+            return $query->find($id);
         } catch (\Exception $e) {
             throw new \RuntimeException('Failed to find tenant: ' . $e->getMessage(), 0, $e);
         }
@@ -28,6 +34,12 @@ class TenantRepository
 
             if (isset($filters['domain'])) {
                 $query->where('domain', 'like', '%' . $filters['domain'] . '%');
+            }
+
+            if (isset($filters['with_trashed']) && $filters['with_trashed']) {
+                $query->withTrashed();
+            } elseif (isset($filters['only_trashed']) && $filters['only_trashed']) {
+                $query->onlyTrashed();
             }
 
             return $query->get();
@@ -64,12 +76,24 @@ class TenantRepository
         }
     }
 
-    public function delete(Tenant $tenant): bool
+    public function delete(Tenant $tenant, bool $force = false): bool
     {
         try {
+            if ($force) {
+                return $tenant->forceDelete();
+            }
             return $tenant->delete();
         } catch (\Exception $e) {
             throw new \RuntimeException('Failed to delete tenant: ' . $e->getMessage(), 0, $e);
+        }
+    }
+
+    public function restore(Tenant $tenant): bool
+    {
+        try {
+            return $tenant->restore();
+        } catch (\Exception $e) {
+            throw new \RuntimeException('Failed to restore tenant: ' . $e->getMessage(), 0, $e);
         }
     }
 
@@ -81,6 +105,12 @@ class TenantRepository
 
             if (isset($filters['is_active'])) {
                 $query->where('is_active', $filters['is_active']);
+            }
+
+            if (isset($filters['with_trashed']) && $filters['with_trashed']) {
+                $query->withTrashed();
+            } elseif (isset($filters['only_trashed']) && $filters['only_trashed']) {
+                $query->onlyTrashed();
             }
 
             $total = $query->count();

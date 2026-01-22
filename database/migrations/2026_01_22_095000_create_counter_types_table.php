@@ -13,12 +13,16 @@ return new class extends Migration
     {
         Schema::create('counter_types', function (Blueprint $table) {
             $table->id();
-            $table->string('tenant_id', 50);
+            $table->foreignId('tenant_id');
             $table->string('name', 200);
             $table->string('code', 50)->unique();
             $table->text('description')->nullable();
             $table->string('status', 20)->default('ACTIVE')->comment("Values: 'ACTIVE', 'INACTIVE'");
+            $table->string('created_by', 50)->nullable();
+            $table->string('updated_by', 50)->nullable();
+            $table->string('deleted_by', 50)->nullable();
             $table->timestamps();
+            $table->softDeletes();
 
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
@@ -26,6 +30,7 @@ return new class extends Migration
             // Indexes
             $table->index('tenant_id', 'idx_counter_types_tenant_id');
             $table->index('status', 'idx_counter_types_status');
+            $table->index('deleted_at', 'idx_counter_types_deleted_at');
         });
     }
 

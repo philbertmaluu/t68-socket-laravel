@@ -2,14 +2,16 @@
 
 namespace App\Domains\Service\ServiceDocument\Models;
 
+use App\Shared\Traits\Auditable;
 use App\Shared\Traits\HasTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ServiceDocument extends Model
 {
-    use HasFactory, HasTenant;
+    use HasFactory, HasTenant, SoftDeletes, Auditable;
 
     protected $table = 'service_documents';
     protected $primaryKey = 'id';
@@ -24,6 +26,9 @@ class ServiceDocument extends Model
         'document_name',
         'is_required',
         'order_index',
+        'created_by',
+        'updated_by',
+        'deleted_by',
     ];
 
     protected function casts(): array
@@ -32,6 +37,7 @@ class ServiceDocument extends Model
             'is_required' => 'boolean',
             'order_index' => 'integer',
             'created_at' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 
