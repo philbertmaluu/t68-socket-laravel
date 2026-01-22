@@ -1,6 +1,6 @@
 <?php
 
+use App\Domains\Counter\Controllers\CounterController;
 use Illuminate\Support\Facades\Route;
 
-// Counter routes will be registered here when CounterController is created
-// Route::apiResource('counters', CounterController::class);
+Route::apiResource('counters', CounterController::class);

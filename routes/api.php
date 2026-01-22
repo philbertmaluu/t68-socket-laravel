@@ -13,8 +13,8 @@ Route::post('/auth/logout', function () {
     return response()->json(['message' => 'Logout endpoint - to be implemented']);
 })->middleware('auth:sanctum');
 
-// Protected API routes
-Route::middleware('auth:sanctum')->group(function () {
+// Protected API routes with QMS prefix
+Route::prefix('qms')->middleware('auth:sanctum')->group(function () {
     // Domain routes
     require app_path('Domains/Tenant/routes.php');
     require app_path('Domains/Counter/routes.php');

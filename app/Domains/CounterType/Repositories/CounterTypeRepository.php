@@ -1,16 +1,16 @@
 <?php
 
-namespace App\Domains\Tenant\Repositories;
+namespace App\Domains\CounterType\Repositories;
 
-use App\Domains\Tenant\Models\Tenant;
+use App\Domains\CounterType\Models\CounterType;
 use App\Shared\Helpers\PaginationHelper;
 use Illuminate\Database\Eloquent\Collection;
 
-class TenantRepository
+class CounterTypeRepository
 {
-    public function findById(string $id, bool $withTrashed = false): ?Tenant
+    public function findById(int|string $id, bool $withTrashed = false): ?CounterType
     {
-        $query = Tenant::withoutTenant();
+        $query = CounterType::query();
         
         if ($withTrashed) {
             $query->withTrashed();
@@ -21,14 +21,14 @@ class TenantRepository
 
     public function findAll(array $filters = []): Collection
     {
-        $query = Tenant::withoutTenant()->query();
+        $query = CounterType::query();
 
-        if (isset($filters['is_active'])) {
-            $query->where('is_active', $filters['is_active']);
+        if (isset($filters['status'])) {
+            $query->where('status', $filters['status']);
         }
 
-        if (isset($filters['domain'])) {
-            $query->where('domain', 'like', '%' . $filters['domain'] . '%');
+        if (isset($filters['code'])) {
+            $query->where('code', $filters['code']);
         }
 
         if (isset($filters['with_trashed']) && $filters['with_trashed']) {
@@ -40,42 +40,46 @@ class TenantRepository
         return $query->get();
     }
 
-    public function findByDomain(string $domain): ?Tenant
+    public function findByCode(string $code): ?CounterType
     {
-        return Tenant::withoutTenant()->where('domain', $domain)->first();
+        return CounterType::where('code', $code)->first();
     }
 
-    public function create(array $data): Tenant
+    public function create(array $data): CounterType
     {
-        return Tenant::withoutTenant()->create($data);
+        return CounterType::create($data);
     }
 
-    public function update(Tenant $tenant, array $data): Tenant
+    public function update(CounterType $counterType, array $data): CounterType
     {
-        $tenant->update($data);
-        return $tenant->fresh();
+        $counterType->update($data);
+        return $counterType->fresh();
     }
 
-    public function delete(Tenant $tenant, bool $force = false): bool
+    public function delete(CounterType $counterType, bool $force = false): bool
     {
         if ($force) {
-            return $tenant->forceDelete();
+            return $counterType->forceDelete();
         }
-        return $tenant->delete();
+        return $counterType->delete();
     }
 
-    public function restore(Tenant $tenant): bool
+    public function restore(CounterType $counterType): bool
     {
-        return $tenant->restore();
+        return $counterType->restore();
     }
 
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
         [$page, $perPage] = PaginationHelper::validateParams($page, $perPage);
-        $query = Tenant::withoutTenant()->query();
+        $query = CounterType::query();
 
-        if (isset($filters['is_active'])) {
-            $query->where('is_active', $filters['is_active']);
+        if (isset($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        if (isset($filters['code'])) {
+            $query->where('code', $filters['code']);
         }
 
         if (isset($filters['with_trashed']) && $filters['with_trashed']) {

@@ -1,6 +1,6 @@
 <?php
 
+use App\Domains\Service\ServiceDocument\Controllers\ServiceDocumentController;
 use Illuminate\Support\Facades\Route;
 
-// ServiceDocument routes will be registered here when ServiceDocumentController is created
-// Route::apiResource('service-documents', ServiceDocumentController::class);
+Route::apiResource('service-documents', ServiceDocumentController::class);

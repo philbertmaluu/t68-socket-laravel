@@ -15,5 +15,5 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->statefulApi();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Custom exception handling is done in App\Exceptions\Handler
     })->create();

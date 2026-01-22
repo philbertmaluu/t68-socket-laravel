@@ -1,6 +1,6 @@
 <?php
 
+use App\Domains\Device\Controllers\DeviceController;
 use Illuminate\Support\Facades\Route;
 
-// Device routes will be registered here when DeviceController is created
-// Route::apiResource('devices', DeviceController::class);
+Route::apiResource('devices', DeviceController::class);
