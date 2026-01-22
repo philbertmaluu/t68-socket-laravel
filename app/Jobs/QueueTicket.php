@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Models\Ticket;
+use App\Domains\Ticket\Models\Ticket;
 use App\Services\QueueService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;

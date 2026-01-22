@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Events\QueuePositionUpdated;
-use App\Models\Ticket;
+use App\Domains\Ticket\Models\Ticket;
 use Illuminate\Support\Facades\DB;
 
 class QueueService

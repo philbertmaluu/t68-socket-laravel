@@ -2,7 +2,7 @@
 
 namespace App\Events;
 
-use App\Models\Ticket;
+use App\Domains\Ticket\Models\Ticket;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;

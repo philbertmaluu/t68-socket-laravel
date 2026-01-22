@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Jobs\QueueTicket;
-use App\Models\Ticket;
+use App\Domains\Ticket\Models\Ticket;
 use App\Services\QueueService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Bus;

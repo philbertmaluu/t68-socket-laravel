@@ -13,7 +13,8 @@ return new class extends Migration
     {
         Schema::create('tickets', function (Blueprint $table) {
             $table->id();
-            $table->string('ticket_number', 50)->unique();
+            $table->string('tenant_id', 50);
+            $table->string('ticket_number', 50);
             $table->string('service_type', 200);
             $table->string('service_id', 50)->nullable();
             $table->string('queue_id', 50);
@@ -34,8 +35,14 @@ return new class extends Migration
             $table->integer('queue_position')->nullable();
             $table->timestamps();
 
+            // Foreign key constraints
+            $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
+
             // Indexes
+            $table->index('tenant_id', 'idx_tickets_tenant_id');
             $table->index('ticket_number', 'idx_tickets_ticket_number');
+            // Unique constraint: ticket_number must be unique per tenant
+            $table->unique(['tenant_id', 'ticket_number'], 'idx_tickets_tenant_ticket_unique');
             $table->index('queue_id', 'idx_tickets_queue_id');
             $table->index('counter_id', 'idx_tickets_counter_id');
             $table->index('clerk_id', 'idx_tickets_clerk_id');

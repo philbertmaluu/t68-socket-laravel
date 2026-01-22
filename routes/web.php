@@ -1,7 +1,7 @@
 <?php
 
 use App\Http\Controllers\LogViewController;
-use App\Models\Ticket;
+use App\Domains\Ticket\Models\Ticket;
 use App\Services\QueueService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
