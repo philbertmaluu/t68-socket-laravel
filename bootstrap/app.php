@@ -13,6 +13,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+        $middleware->validateCsrfTokens(except: [
+            'api/qms/auth/authenticate',
+            'api/qms/auth/refresh-token',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Custom exception handling is done in App\Exceptions\Handler

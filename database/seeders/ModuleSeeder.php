@@ -29,18 +29,13 @@ class ModuleSeeder extends Seeder
         ];
 
         foreach ($modules as $moduleData) {
-            // Use insert to maintain specific IDs if provided
-            if (isset($moduleData['id'])) {
-                DB::table('modules')->insert(array_merge($moduleData, [
+            DB::table('modules')->updateOrInsert(
+                ['code' => $moduleData['code']],
+                array_merge($moduleData, [
                     'created_at' => now(),
                     'updated_at' => now(),
-                ]));
-            } else {
-                DB::table('modules')->insert(array_merge($moduleData, [
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]));
-            }
+                ])
+            );
         }
 
         $this->command->info('Modules seeded successfully.');

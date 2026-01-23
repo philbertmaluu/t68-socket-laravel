@@ -55,7 +55,10 @@ class RoleSeeder extends Seeder
         ];
 
         foreach ($roles as $roleData) {
-            Role::create($roleData);
+            Role::firstOrCreate(
+                ['role_code' => $roleData['role_code'], 'module_id' => $roleData['module_id']],
+                $roleData
+            );
         }
 
         $this->command->info('Roles seeded successfully.');

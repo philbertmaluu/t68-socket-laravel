@@ -131,14 +131,15 @@ class AuthService
     private function createNewUser(object $employee, string $refreshToken): array
     {
         $user = $this->repository->createUser([
-            'id' => \App\Shared\Helpers\UuidHelper::generate(),
-            'name' => $employee->fname . ' ' . $employee->mname . ' ' . $employee->sname,
+            'tenant_id' => 1, // Default tenant, adjust as needed
+            'name' => trim($employee->fname . ' ' . $employee->mname . ' ' . $employee->sname),
             'user_id' => $employee->pfno,
             'user_type' => 'staff',
             'email' => $employee->email,
             'password' => bcrypt($employee->national_id),
             'email_verified_at' => now(),
             'refresh_token' => $refreshToken,
+            'is_active' => true,
         ]);
 
         $token = $user->createToken($employee->pfno)->plainTextToken;
@@ -153,17 +154,11 @@ class AuthService
 
     private function authenticateExistingUser(object $employee, User $user, string $refreshToken): array
     {
-        if (!Auth::attempt(['email' => $employee->email, 'password' => $employee->national_id])) {
-            throw new \Exception('Unauthenticated.');
-        }
-
-        /** @var User $authUser */
-        $authUser = Auth::user();
-        if (!$authUser) {
-            throw new \Exception('User not found after authentication.');
-        }
+        // Update refresh token
+        $this->repository->updateRefreshToken($user, $refreshToken);
         
-        $token = $authUser->createToken($employee->pfno)->plainTextToken;
+        // Generate Sanctum token directly (no password check needed since token was verified from HRPD)
+        $token = $user->createToken($employee->pfno)->plainTextToken;
         $roles = $this->repository->getUserRoles($employee->pfno);
 
         return [

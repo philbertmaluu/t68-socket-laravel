@@ -18,10 +18,10 @@ class UserRoleSeeder extends Seeder
     public function run(): void
     {
         // Find the user by user_id (without tenant scope during seeding)
-        $user = User::withoutTenant()->where('user_id', '6313')->first();
+        $user = User::withoutTenant()->where('user_id', '5148')->first();
         
         if (!$user) {
-            $this->command->warn('User with user_id 6313 not found. Please run UserSeeder first.');
+            $this->command->warn('User with user_id 5148 not found. Please run UserSeeder first.');
             return;
         }
 
@@ -35,23 +35,20 @@ class UserRoleSeeder extends Seeder
 
         // Assign all roles to the user
         foreach ($roles as $role) {
-            // Check if user already has this role
-            $existingUserRole = UserRole::where('user_id', $user->id)
-                ->where('role_id', $role->id)
-                ->first();
-
-            if (!$existingUserRole) {
-                UserRole::create([
+            UserRole::firstOrCreate(
+                [
                     'user_id' => $user->id,
                     'role_id' => $role->id,
+                ],
+                [
                     'start_date' => now(),
                     'end_date' => null,
                     'status' => 'active',
                     'handover_to_user_id' => null,
                     'handover_date' => null,
                     'created_by' => $user->id,
-                ]);
-            }
+                ]
+            );
         }
 
         $this->command->info('All roles assigned to user successfully.');

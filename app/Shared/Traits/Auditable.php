@@ -73,11 +73,17 @@ trait Auditable
      */
     protected static function getTenantId(Model $model): ?string
     {
-        if (method_exists($model, 'getTenantId')) {
-            return $model->getTenantId();
+        // Check if model has tenant_id attribute
+        if (isset($model->tenant_id)) {
+            return $model->tenant_id;
         }
 
-        return $model->tenant_id ?? app('tenant.id');
+        // Try to get from app container
+        if (app()->bound('tenant.id')) {
+            return app('tenant.id');
+        }
+
+        return null;
     }
 
     /**

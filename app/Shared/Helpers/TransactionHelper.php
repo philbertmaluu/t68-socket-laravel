@@ -12,7 +12,8 @@ class TransactionHelper
         return DB::transaction($callback);
     }
 
-    public static function executeWithRetry(Closure $callback, int $maxRetries = 3): mixed
+    public static function executeWithRetry(Closure $callback, int $maxRetries = 3)
+    // : mixed
     {
         $attempts = 0;
 

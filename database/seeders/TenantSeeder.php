@@ -30,7 +30,7 @@ class TenantSeeder extends Seeder
         ];
 
         foreach ($tenants as $tenantData) {
-            Tenant::updateOrCreate(
+            Tenant::firstOrCreate(
                 ['domain' => $tenantData['domain']],
                 $tenantData
             );

@@ -19,10 +19,10 @@ class UserSeeder extends Seeder
         $users = [
             [
                 'tenant_id' => 1,
-                'user_id' => '6313', 
+                'user_id' => '5148', 
                 'user_type' => 'staff',
-                'name' => 'Philbert Malulu',
-                'email' => 'philbert.malulu@nssf.go.tz',
+                'name' => 'Daud Mabena',
+                'email' => 'daud.mabena@nssf.go.tz',
                 'password' => Hash::make('12341234q'),
                 'is_active' => true,
                 'last_login' => null,
