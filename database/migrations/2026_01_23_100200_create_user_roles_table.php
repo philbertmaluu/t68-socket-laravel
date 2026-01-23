@@ -10,20 +10,17 @@ return new class extends Migration
     {
         Schema::create('user_roles', function (Blueprint $table) {
             $table->id();
-            $table->string('user_id', 50);
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->foreignId('role_id')->constrained('roles')->onDelete('cascade');
             $table->timestamp('start_date');
             $table->timestamp('end_date')->nullable();
             $table->enum('status', ['active', 'handover', 'inactive'])->default('active');
-            $table->string('handover_to_user_id', 50)->nullable();
+            $table->foreignId('handover_to_user_id')->nullable()->constrained('users')->onDelete('set null');
             $table->timestamp('handover_date')->nullable();
-            $table->integer('created_by')->nullable();
-            $table->integer('updated_by')->nullable();
+            $table->foreignId('created_by')->nullable()->constrained('users')->onDelete('set null');
+            $table->foreignId('updated_by')->nullable()->constrained('users')->onDelete('set null');
             $table->timestamps();
             $table->softDeletes();
-
-            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
-            $table->foreign('handover_to_user_id')->references('id')->on('users')->onDelete('set null');
 
             $table->index('user_id', 'idx_user_roles_user_id');
             $table->index('role_id', 'idx_user_roles_role_id');

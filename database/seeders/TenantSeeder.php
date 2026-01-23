@@ -30,7 +30,10 @@ class TenantSeeder extends Seeder
         ];
 
         foreach ($tenants as $tenantData) {
-            Tenant::create($tenantData);
+            Tenant::updateOrCreate(
+                ['domain' => $tenantData['domain']],
+                $tenantData
+            );
         }
 
         $this->command->info('Tenants seeded successfully.');

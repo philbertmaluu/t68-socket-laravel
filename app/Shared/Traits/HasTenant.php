@@ -24,7 +24,11 @@ trait HasTenant
 
     protected static function getCurrentTenantId(): ?string
     {
-        return app('tenant.id');
+        try {
+            return app()->bound('tenant.id') ? app('tenant.id') : null;
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     public function scopeWithoutTenant($query)

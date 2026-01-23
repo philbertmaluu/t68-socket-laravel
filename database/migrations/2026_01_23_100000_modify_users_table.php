@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::dropIfExists('users');
         
         Schema::create('users', function (Blueprint $table) {
-            $table->string('id', 50)->primary();
+            $table->id();
             $table->foreignId('tenant_id')->nullable()->constrained('tenants')->onDelete('cascade');
             $table->string('user_id', 50);
             $table->enum('user_type', ['staff', 'member', 'employer', 'supplier'])->default('staff');
@@ -23,9 +23,9 @@ return new class extends Migration
             $table->string('refresh_token', 255)->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->rememberToken();
-            $table->string('created_by', 50)->nullable();
-            $table->string('updated_by', 50)->nullable();
-            $table->string('deleted_by', 50)->nullable();
+            $table->foreignId('created_by')->nullable();
+            $table->foreignId('updated_by')->nullable();
+            $table->foreignId('deleted_by')->nullable();
             $table->timestamps();
             $table->softDeletes();
 
@@ -34,6 +34,13 @@ return new class extends Migration
             $table->index('user_id', 'idx_users_user_id');
             $table->index('tenant_id', 'idx_users_tenant_id');
             $table->index('deleted_at', 'idx_users_deleted_at');
+        });
+        
+        // Add self-referencing foreign keys after table creation
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');
+            $table->foreign('updated_by')->references('id')->on('users')->onDelete('set null');
+            $table->foreign('deleted_by')->references('id')->on('users')->onDelete('set null');
         });
     }
 
