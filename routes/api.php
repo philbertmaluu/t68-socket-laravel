@@ -2,16 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 
-// Sanctum authentication routes
-Route::post('/auth/login', function () {
-    // TODO: Implement login logic
-    return response()->json(['message' => 'Login endpoint - to be implemented']);
-});
-
-Route::post('/auth/logout', function () {
-    // TODO: Implement logout logic
-    return response()->json(['message' => 'Logout endpoint - to be implemented']);
-})->middleware('auth:sanctum');
+// Authentication routes (public)
+require app_path('Domains/Authentication/routes.php');
 
 // Protected API routes with QMS prefix
 Route::prefix('qms')->middleware('auth:sanctum')->group(function () {
