@@ -29,6 +29,8 @@ class CounterService
     public function createCounter(array $data): Counter
     {
         return TransactionHelper::execute(function () use ($data) {
+            // Hardcode office_id for now
+            $data['office_id'] = $data['office_id'] ?? '1';
             return $this->repository->create($data);
         });
     }
@@ -36,6 +38,10 @@ class CounterService
     public function updateCounter(Counter $counter, array $data): Counter
     {
         return TransactionHelper::execute(function () use ($counter, $data) {
+            // Hardcode office_id for now if not provided
+            if (!isset($data['office_id']) || empty($data['office_id'])) {
+                $data['office_id'] = '1';
+            }
             return $this->repository->update($counter, $data);
         });
     }
