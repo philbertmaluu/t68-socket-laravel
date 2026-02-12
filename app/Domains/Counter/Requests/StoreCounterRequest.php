@@ -18,7 +18,7 @@ class StoreCounterRequest extends FormRequest
             'type' => ['required', 'exists:counter_types,id'],
             'service_id' => ['required', 'exists:services,id'],
             'status' => ['sometimes', 'string', 'in:ACTIVE,INACTIVE,MAINTENANCE'],
-            'office_id' => ['required', 'string', 'max:50'],
+            'office_id' => ['sometimes', 'string', 'max:50'],
         ];
     }
 
@@ -30,7 +30,6 @@ class StoreCounterRequest extends FormRequest
             'type.exists' => 'Selected counter type does not exist',
             'service_id.required' => 'Service is required',
             'service_id.exists' => 'Selected service does not exist',
-            'office_id.required' => 'Office ID is required',
         ];
     }
 }
