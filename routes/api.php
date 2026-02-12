@@ -15,4 +15,5 @@ Route::prefix('qms')->middleware('auth:sanctum')->group(function () {
     require app_path('Domains/Service/ServiceDocument/routes.php');
     require app_path('Domains/Device/routes.php');
     require app_path('Domains/Ticket/routes.php');
+    require app_path('Domains/Audit/routes.php');
 });
