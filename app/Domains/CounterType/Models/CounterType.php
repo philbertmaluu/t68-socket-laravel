@@ -14,12 +14,12 @@ class CounterType extends Model
 {
     use HasFactory, HasTenant, SoftDeletes, Auditable;
 
-    public $incrementing = false;
-    protected $keyType = 'string';
+    protected $table = 'counter_types';
+    protected $primaryKey = 'id';
 
     protected $fillable = [
-        'id',
         'tenant_id',
+        'code',
         'name',
         'description',
         'status',

@@ -15,6 +15,38 @@ trait Auditable
      */
     protected static function bootAuditable(): void
     {
+        // Set created_by before creating
+        static::creating(function (Model $model) {
+            if (self::hasAuditableField($model, 'created_by')) {
+                $user = Auth::user();
+                if ($user && empty($model->created_by)) {
+                    $model->created_by = $user->id;
+                }
+            }
+        });
+
+        // Set updated_by before updating
+        static::updating(function (Model $model) {
+            if (self::hasAuditableField($model, 'updated_by')) {
+                $user = Auth::user();
+                if ($user) {
+                    $model->updated_by = $user->id;
+                }
+            }
+        });
+
+        // Set deleted_by before soft deleting
+        static::deleting(function (Model $model) {
+            if (!$model->isForceDeleting() && self::hasAuditableField($model, 'deleted_by')) {
+                $user = Auth::user();
+                if ($user) {
+                    // Update deleted_by quietly to avoid triggering events
+                    $model->updateQuietly(['deleted_by' => $user->id]);
+                }
+            }
+        });
+
+        // Create audit trail entries after model events
         static::created(function (Model $model) {
             self::audit('created', $model);
         });
@@ -32,8 +64,22 @@ trait Auditable
         });
 
         static::restored(function (Model $model) {
+            // Clear deleted_by on restore
+            if (self::hasAuditableField($model, 'deleted_by')) {
+                $model->deleted_by = null;
+                $model->save();
+            }
             self::audit('restored', $model);
         });
+    }
+
+    /**
+     * Check if model has an auditable field.
+     */
+    protected static function hasAuditableField(Model $model, string $field): bool
+    {
+        return in_array($field, $model->getFillable()) || 
+               array_key_exists($field, $model->getAttributes());
     }
 
     /**
