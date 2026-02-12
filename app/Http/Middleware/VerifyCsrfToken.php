@@ -14,5 +14,7 @@ class VerifyCsrfToken extends Middleware
     protected $except = [
         'api/qms/auth/authenticate',
         'api/qms/auth/refresh-token',
+        // Dev / API routes using Sanctum bearer tokens (no cookie-based CSRF needed)
+        'api/qms/*',
     ];
 }

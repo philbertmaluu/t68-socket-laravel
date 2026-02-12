@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Route;
 // Authentication routes (public)
 require app_path('Domains/Authentication/routes.php');
 
-// Protected API routes with QMS prefix
+// Protected API routes
 Route::prefix('qms')->middleware('auth:sanctum')->group(function () {
     // Domain routes
     require app_path('Domains/Tenant/routes.php');

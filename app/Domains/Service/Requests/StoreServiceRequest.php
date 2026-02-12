@@ -18,8 +18,9 @@ class StoreServiceRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'estimated_time' => ['required', 'integer', 'min:1'],
             'status' => ['sometimes', 'string', 'in:ACTIVE,INACTIVE'],
-            'region_id' => ['required', 'string', 'max:50'],
-            'office_id' => ['required', 'string', 'max:50'],
+            // Allow nullable/empty - defaults will be set in ServiceService if missing
+            'region_id' => ['nullable', 'string', 'max:50'],
+            'office_id' => ['nullable', 'string', 'max:50'],
         ];
     }
 
@@ -29,8 +30,6 @@ class StoreServiceRequest extends FormRequest
             'name.required' => 'Service name is required',
             'estimated_time.required' => 'Estimated time is required',
             'estimated_time.min' => 'Estimated time must be at least 1 minute',
-            'region_id.required' => 'Region ID is required',
-            'office_id.required' => 'Office ID is required',
         ];
     }
 }

@@ -6,6 +6,12 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('qms')->group(function () {
     Route::post('/auth/authenticate', [AuthController::class, 'authenticate']);
+    
+    // Local-only dev login endpoint (bypasses external SSO token)
+    if (app()->environment('local')) {
+        Route::post('/auth/dev-login', [AuthController::class, 'devLogin']);
+    }
+
     Route::post('/auth/refresh-token', [AuthController::class, 'refreshToken']);
     Route::get('/auth/user-details', [AuthController::class, 'userDetails'])->middleware('auth:sanctum');
     Route::get('/auth/user-roles/{module}', [AuthController::class, 'userRoles'])->middleware('auth:sanctum');
