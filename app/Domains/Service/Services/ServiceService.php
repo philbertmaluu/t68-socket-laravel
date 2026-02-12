@@ -5,6 +5,7 @@ namespace App\Domains\Service\Services;
 use App\Domains\Service\Models\Service;
 use App\Domains\Service\Repositories\ServiceRepository;
 use App\Shared\Helpers\TransactionHelper;
+use App\Shared\Helpers\UuidHelper;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 
