@@ -47,7 +47,7 @@ class StoreTicketRequest extends FormRequest
             response()->json([
                 'success' => false,
                 'status_code' => 422,
-                'message' => 'Validation failed',
+                'message' => $validator->errors()->first() . ' and ' . $validator->errors()->count() . ' more error',
                 'data' => [
                     'errors' => $validator->errors()->toArray()
                 ]
