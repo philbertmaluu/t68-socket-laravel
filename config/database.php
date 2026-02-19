@@ -113,6 +113,31 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        /*
+        | Oracle (requires oci8 / pdo_oci and a driver package e.g. yajra/laravel-oci8)
+        | Use DB_SERVICE_NAME for service name, or DB_SID for SID. Or set DB_TNS for TNS connection.
+        */
+        'oracle' => [
+            'driver' => 'oracle',
+            'tns' => env('DB_TNS', ''),
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', '1521'),
+            'database' => env('DB_DATABASE', 'XE'),
+            'service_name' => env('DB_SERVICE_NAME'),
+            'sid' => env('DB_SID'),
+            'username' => env('DB_USERNAME', ''),
+            'password' => env('DB_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'AL32UTF8'),
+            'prefix' => '',
+            'prefix_schema' => env('DB_SCHEMA_PREFIX', ''),
+            'edition' => env('DB_EDITION'),
+            'server_version' => env('DB_SERVER_VERSION'),
+            'options' => extension_loaded('pdo_oci') ? array_filter([
+                \PDO::ATTR_CASE => \PDO::CASE_LOWER,
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+            ]) : [],
+        ],
+
     ],
 
     /*
