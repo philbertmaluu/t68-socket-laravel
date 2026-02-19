@@ -36,11 +36,23 @@ class TicketController extends BaseController
     /**
      * Store a newly created ticket.
      * 
+     * Required payload:
+     * - service_type_id: Service ID (must exist in services table)
+     * - phone_number: Customer phone number (for SMS notifications)
+     * - office_id: Office ID
+     * 
+     * Automatically generated:
+     * - ticket_number: Auto-generated (format: A001-Z999, 4 characters)
+     * - queue_id: Found or created based on service_type_id and office_id
+     * - service_type: Retrieved from service name
+     * - service_id: Set from service_type_id
+     * - estimated_time: Retrieved from service
+     * 
      * This method triggers the following events automatically:
      * - TicketCreated: Fired when ticket is created (via Ticket model boot method)
      *   - Listener: SendTicketCreatedSms - Sends SMS notification to customer
      *   - Listener: BroadcastTicketCreated - Broadcasts to WebSocket channels
-     *   - Job: QueueTicket - Adds ticket to queue
+     *   - Job: QueueTicket - DISABLED - Tickets are not automatically queued
      * 
      * @param StoreTicketRequest $request
      * @return JsonResponse
@@ -48,8 +60,10 @@ class TicketController extends BaseController
     public function store(StoreTicketRequest $request): JsonResponse
     {
         try {
-            // Create ticket - this will automatically fire TicketCreated event
-            // which triggers SendTicketCreatedSms listener to send SMS notification
+            // Create ticket - this will automatically:
+            // 1. Generate ticket number
+            // 2. Find or create queue based on service and office
+            // 3. Fire TicketCreated event which triggers SendTicketCreatedSms listener
             $ticket = $this->service->createTicket($request->validated());
             
             return $this->sendResponse($ticket, 'Ticket created successfully', [], 201);

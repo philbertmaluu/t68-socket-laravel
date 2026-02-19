@@ -72,11 +72,12 @@ class Ticket extends Model
         /**
          * When a ticket is created, automatically fire events:
          * - TicketCreated: Triggers SendTicketCreatedSms listener (sends SMS)
-         * - QueueTicket job: Adds ticket to queue
+         * - QueueTicket job: DISABLED - Tickets are not automatically queued
+         *   (Tickets can be queued manually later if needed)
          */
         static::created(function (Ticket $ticket) {
             event(new TicketCreated($ticket));
-            QueueTicket::dispatch($ticket);
+            // QueueTicket::dispatch($ticket); // Disabled - tickets are not automatically queued
         });
 
         static::updating(function (Ticket $ticket) {
