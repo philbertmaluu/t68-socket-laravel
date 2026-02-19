@@ -14,6 +14,8 @@ use App\Listeners\BroadcastTicketCompleted;
 use App\Listeners\BroadcastTicketCreated;
 use App\Listeners\BroadcastTicketServing;
 use App\Listeners\BroadcastTicketStatusChanged;
+use App\Listeners\SendTicketCreatedSms;
+use App\Listeners\SendTicketCompletedSms;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -61,6 +63,17 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(
             QueuePositionUpdated::class,
             BroadcastQueuePositionUpdated::class
+        );
+
+        // Register SMS notification listeners
+        Event::listen(
+            TicketCreated::class,
+            SendTicketCreatedSms::class
+        );
+
+        Event::listen(
+            TicketCompleted::class,
+            SendTicketCompletedSms::class
         );
     }
 }

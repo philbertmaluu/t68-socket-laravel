@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'ictms' => [
+        'endpoint' => env('ICTMS_API_ENDPOINT', 'https://ictms-api.nssf.go.tz/api/send-notification'),
+        'system' => env('ICTMS_SYSTEM', 'ICTMS'),
+        'enabled' => env('ICTMS_SMS_ENABLED', true),
+    ],
+
 ];
