@@ -69,6 +69,11 @@ class Ticket extends Model
     {
         parent::boot();
 
+        /**
+         * When a ticket is created, automatically fire events:
+         * - TicketCreated: Triggers SendTicketCreatedSms listener (sends SMS)
+         * - QueueTicket job: Adds ticket to queue
+         */
         static::created(function (Ticket $ticket) {
             event(new TicketCreated($ticket));
             QueueTicket::dispatch($ticket);
@@ -102,11 +107,17 @@ class Ticket extends Model
                 event(new TicketStatusChanged($ticket, $oldStatus, $newStatus));
             }
 
+            /**
+             * When ticket status changes, fire specific events:
+             * - TicketCompleted: Triggers SendTicketCompletedSms listener (sends SMS)
+             * - TicketCalled: Triggers BroadcastTicketCalled listener
+             * - TicketServing: Triggers BroadcastTicketServing listener
+             */
             if ($oldStatus !== $newStatus) {
                 match ($newStatus) {
                     'called' => event(new TicketCalled($ticket)),
                     'serving' => event(new TicketServing($ticket)),
-                    'completed' => event(new TicketCompleted($ticket)),
+                    'completed' => event(new TicketCompleted($ticket)), // Triggers SendTicketCompletedSms
                     default => null,
                 };
             }

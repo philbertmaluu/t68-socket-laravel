@@ -33,10 +33,25 @@ class TicketController extends BaseController
         }
     }
 
+    /**
+     * Store a newly created ticket.
+     * 
+     * This method triggers the following events automatically:
+     * - TicketCreated: Fired when ticket is created (via Ticket model boot method)
+     *   - Listener: SendTicketCreatedSms - Sends SMS notification to customer
+     *   - Listener: BroadcastTicketCreated - Broadcasts to WebSocket channels
+     *   - Job: QueueTicket - Adds ticket to queue
+     * 
+     * @param StoreTicketRequest $request
+     * @return JsonResponse
+     */
     public function store(StoreTicketRequest $request): JsonResponse
     {
         try {
+            // Create ticket - this will automatically fire TicketCreated event
+            // which triggers SendTicketCreatedSms listener to send SMS notification
             $ticket = $this->service->createTicket($request->validated());
+            
             return $this->sendResponse($ticket, 'Ticket created successfully', [], 201);
         } catch (\Exception $e) {
             return $this->sendError('Failed to create ticket', ['error' => $e->getMessage()], 500);
@@ -58,6 +73,21 @@ class TicketController extends BaseController
         }
     }
 
+    /**
+     * Update a ticket.
+     * 
+     * This method triggers the following events automatically when status changes:
+     * - TicketStatusChanged: Fired when status changes (via Ticket model boot method)
+     * - TicketCompleted: Fired when status changes to 'completed'
+     *   - Listener: SendTicketCompletedSms - Sends SMS notification to customer
+     *   - Listener: BroadcastTicketCompleted - Broadcasts to WebSocket channels
+     * - TicketCalled: Fired when status changes to 'called'
+     * - TicketServing: Fired when status changes to 'serving'
+     * 
+     * @param UpdateTicketRequest $request
+     * @param string $id
+     * @return JsonResponse
+     */
     public function update(UpdateTicketRequest $request, string $id): JsonResponse
     {
         try {
@@ -67,7 +97,11 @@ class TicketController extends BaseController
                 return $this->sendError('Ticket not found', [], 404);
             }
 
+            // Update ticket - this will automatically fire events based on status changes
+            // If status changes to 'completed', TicketCompleted event fires
+            // which triggers SendTicketCompletedSms listener to send SMS notification
             $updated = $this->service->updateTicket($ticket, $request->validated());
+            
             return $this->sendResponse($updated, 'Ticket updated successfully');
         } catch (\Exception $e) {
             return $this->sendError('Failed to update ticket', ['error' => $e->getMessage()], 500);
