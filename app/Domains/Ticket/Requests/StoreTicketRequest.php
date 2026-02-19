@@ -2,7 +2,9 @@
 
 namespace App\Domains\Ticket\Requests;
 
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Validation\Rule;
 
 class StoreTicketRequest extends FormRequest
@@ -29,5 +31,27 @@ class StoreTicketRequest extends FormRequest
             'phone_number.required' => 'Phone number is required',
             'office_id.required' => 'Office ID is required',
         ];
+    }
+
+    /**
+     * Handle a failed validation attempt.
+     *
+     * @param  \Illuminate\Contracts\Validation\Validator  $validator
+     * @return void
+     *
+     * @throws \Illuminate\Http\Exceptions\HttpResponseException
+     */
+    protected function failedValidation(Validator $validator)
+    {
+        throw new HttpResponseException(
+            response()->json([
+                'success' => false,
+                'status_code' => 422,
+                'message' => 'Validation failed',
+                'data' => [
+                    'errors' => $validator->errors()->toArray()
+                ]
+            ], 422)
+        );
     }
 }
