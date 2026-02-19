@@ -122,7 +122,7 @@ return [
             'tns' => env('DB_TNS', ''),
             'host' => env('DB_HOST', '127.0.0.1'),
             'port' => env('DB_PORT', '1521'),
-            'database' => env('DB_DATABASE', 'XE'),
+            'database' => env('DB_DATABASE', 'QMS'),
             'service_name' => env('DB_SERVICE_NAME'),
             'sid' => env('DB_SID'),
             'username' => env('DB_USERNAME', ''),
