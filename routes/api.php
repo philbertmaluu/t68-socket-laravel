@@ -5,6 +5,11 @@ use Illuminate\Support\Facades\Route;
 // Authentication routes (public)
 require app_path('Domains/Authentication/routes.php');
 
+// Public ticket routes (no authentication required)
+Route::prefix('qms')->group(function () {
+    require app_path('Domains/Ticket/routes.php');
+});
+
 // Protected API routes
 Route::prefix('qms')->middleware('auth:sanctum')->group(function () {
     // Domain routes
@@ -14,6 +19,5 @@ Route::prefix('qms')->middleware('auth:sanctum')->group(function () {
     require app_path('Domains/Service/routes.php');
     require app_path('Domains/Service/ServiceDocument/routes.php');
     require app_path('Domains/Device/routes.php');
-    require app_path('Domains/Ticket/routes.php');
     require app_path('Domains/Audit/routes.php');
 });
