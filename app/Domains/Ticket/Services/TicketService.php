@@ -2,6 +2,8 @@
 
 namespace App\Domains\Ticket\Services;
 
+use App\Domains\Counter\Models\Counter;
+use App\Domains\Counter\Services\CounterService;
 use App\Domains\Service\Models\Service;
 use App\Domains\Service\Services\ServiceService;
 use App\Domains\Ticket\Models\Ticket;
@@ -15,11 +17,13 @@ class TicketService
 {
     private TicketRepository $repository;
     private ServiceService $serviceService;
+    private CounterService $counterService;
 
     public function __construct()
     {
         $this->repository = new TicketRepository();
         $this->serviceService = new ServiceService();
+        $this->counterService = new CounterService();
     }
 
     public function findById(int|string $id, bool $withTrashed = false): ?Ticket
@@ -66,8 +70,9 @@ class TicketService
                 throw new \Exception("Service with ID {$data['service_type_id']} not found");
             }
 
-            // Find or create queue for this service and office
-            $queueId = $this->findOrCreateQueue($data['service_type_id'], $data['office_id'], $service->name);
+            // Find a counter that can serve this service (or any active counter in the office)
+            // Then find or create queue for that counter
+            $queueId = $this->findOrCreateQueueForService($data['service_type_id'], $data['office_id']);
 
             // Generate ticket number
             $ticketNumber = $this->generateTicketNumber($data['office_id']);
@@ -99,49 +104,70 @@ class TicketService
     /**
      * Find or create a queue for a service and office.
      * 
+     * Logic:
+     * 1. Find a counter that can serve this service (counter.service_id = service_id)
+     * 2. If no counter found for this service, find any active counter in the office
+     * 3. Get or create queue for that counter (1:1 relationship)
+     * 
      * @param string $serviceId
      * @param string $officeId
-     * @param string $serviceName
      * @return string Queue ID
+     * @throws \Exception
      */
-    private function findOrCreateQueue(string $serviceId, string $officeId, string $serviceName): string
+    private function findOrCreateQueueForService(string $serviceId, string $officeId): string
     {
-        // Try to find existing queue for this service and office
-        $queue = DB::table('queues')
-            ->where('service_id', $serviceId)
-            ->where('office_id', $officeId)
-            ->first();
-
-        if ($queue) {
-            return $queue->id;
-        }
-
-        // Create new queue if it doesn't exist
-        $queueId = 'queue-' . $serviceId . '-' . $officeId . '-' . time();
+        // Convert to string to ensure type consistency with database
+        $serviceId = (string) $serviceId;
+        $officeId = (string) $officeId;
         
-        DB::table('queues')->insert([
-            'id' => $queueId,
-            'name' => $serviceName . ' Queue',
-            'service_type' => $serviceName,
-            'service_id' => $serviceId,
-            'office_id' => $officeId,
-            'status' => 'normal',
+        // Step 1: Try to find a counter that can serve this service
+        $counter = Counter::where('service_id', $serviceId)
+            ->where('office_id', $officeId)
+            ->where('status', 'ACTIVE')
+            ->first();
+        
+        // Step 2: If no counter found for this service, find any active counter in the office
+        // (since one counter can serve multiple services)
+        if (!$counter) {
+            $counter = Counter::where('office_id', $officeId)
+                ->where('status', 'ACTIVE')
+                ->first();
+        }
+        
+        if (!$counter) {
+            throw new \Exception("No active counter found in office {$officeId} to serve service {$serviceId}");
+        }
+        
+        // Step 3: Get or create queue for this counter (1:1 relationship)
+        $queue = DB::table('queues')
+            ->where('counter_id', $counter->id)
+            ->first();
+        
+        if ($queue) {
+            return (string) $queue->id; // Convert to string for consistency
+        }
+        
+        // Create new queue for this counter (ID will be auto-generated)
+        $queueId = DB::table('queues')->insertGetId([
+            'counter_id' => $counter->id,
+            'name' => $counter->name . ' Queue',
+            'status' => 'Free', // Enum: 'Busy', 'Normal', 'Critical', 'Free'
             'members_waiting' => 0,
             'members_being_served' => 0,
             'average_wait_time' => 0,
-            'counters' => 0,
-            'active_counters' => 0,
+            'office_id' => $officeId,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-
-        Log::info('Created new queue', [
+        
+        Log::info('Created new queue for counter', [
             'queue_id' => $queueId,
-            'service_id' => $serviceId,
+            'counter_id' => $counter->id,
+            'counter_name' => $counter->name,
             'office_id' => $officeId,
         ]);
-
-        return $queueId;
+        
+        return (string) $queueId; // Convert to string for consistency
     }
 
     /**

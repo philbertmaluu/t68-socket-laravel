@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('ticket_number', 50);
             $table->string('service_type', 200);
             $table->string('service_id', 50)->nullable();
-            $table->string('queue_id', 50);
+            $table->foreignId('queue_id'); // References queues table (auto-incrementing id)
             $table->string('member_number', 50)->nullable();
             $table->string('member_name', 200)->nullable();
             $table->string('phone_number', 20)->nullable();
@@ -41,6 +41,7 @@ return new class extends Migration
 
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
+            $table->foreign('queue_id')->references('id')->on('queues')->onDelete('restrict');
 
             // Indexes
             $table->index('tenant_id', 'idx_tickets_tenant_id');
