@@ -23,6 +23,7 @@ class Service extends Model
         'id',
         'tenant_id',
         'name',
+        'swahili_name',
         'description',
         'estimated_time',
         'status',
