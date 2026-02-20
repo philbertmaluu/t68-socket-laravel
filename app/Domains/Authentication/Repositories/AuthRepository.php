@@ -9,12 +9,8 @@ class AuthRepository
 {
     public function getEmployeeByToken(string $token): ?object
     {
-        // Use local users table for authentication
-        return $this->getEmployeeByTokenLocal($token);
-        
-        // Production: Use HRPD database link
-        // TODO: Uncomment when moving to production with HRPD server and DB schema hosted
-        /*
+
+        // Preprod: Use HRPD database link
         $query = "select a.national_id, a.pfno, b.positionid, a.fname, a.mname, a.sname, a.gender, c.office_code, b.office_name, a.mobile, a.email, b.du_id 
                   from hrpd.employee@preprod a 
                   join hrpd.vw_employee_details@preprod b on b.pfno = a.pfno 
@@ -22,67 +18,17 @@ class AuthRepository
                   where a.accesstoken=? and a.employee_status='A'";
         
         return DB::selectOne($query, [$token]);
-        */
+    
     }
 
-    /**
-     * Local development method: Get employee data from local users table
-     * In production, this will be replaced by HRPD database queries
-     */
-    private function getEmployeeByTokenLocal(string $token): ?object
-    {
-        // For local development, try multiple strategies to find user:
-        // 1. Try to match token with user_id
-        // 2. Try to match token with email
-        // 3. For testing: if token doesn't match, use first active user (for development convenience)
-        $user = User::withoutTenant()
-            ->where('is_active', true)
-            ->where(function($query) use ($token) {
-                $query->where('user_id', $token)
-                      ->orWhere('email', $token);
-            })
-            ->first();
-
-        // If no exact match found, for local dev convenience, use first active user
-        // This allows any token to work in development
-        if (!$user) {
-            $user = User::withoutTenant()
-                ->where('is_active', true)
-                ->first();
-        }
-
-        if (!$user) {
-            return null;
-        }
-
-        // Split name into parts
-        $nameParts = explode(' ', trim($user->name), 3);
-        
-        // Return object in the same format as HRPD query
-        return (object) [
-            'national_id' => $user->user_id, // Use user_id as national_id for local
-            'pfno' => $user->user_id,
-            'positionid' => null,
-            'fname' => $nameParts[0] ?? '',
-            'mname' => $nameParts[1] ?? '',
-            'sname' => $nameParts[2] ?? '',
-            'gender' => null,
-            'office_code' => null,
-            'office_name' => null,
-            'mobile' => null,
-            'email' => $user->email,
-            'du_id' => null,
-        ];
-    }
+    
 
     public function getEmployeeByPfno(string $pfno): ?object
     {
-        // Use local users table
-        return $this->getEmployeeByPfnoLocal($pfno);
+       
         
-        // Production: Use HRPD database
-        // TODO: Uncomment when moving to production with HRPD server and DB schema hosted
-        /*
+        // Preprod: Use HRPD database
+    
         $query = "select a.national_id, a.pfno, b.positionid, b.du_id, a.fname, a.mname, a.sname, a.gender, c.office_code, b.office_name, a.mobile, a.email 
                   from hrpd.employee a 
                   join hrpd.vw_employee_details b on b.pfno = a.pfno 
@@ -90,49 +36,14 @@ class AuthRepository
                   where a.pfno=? and a.employee_status='A'";
         
         return DB::selectOne($query, [$pfno]);
-        */
-    }
-
-    /**
-     * Local development method: Get employee data from local users table by PFNO
-     */
-    private function getEmployeeByPfnoLocal(string $pfno): ?object
-    {
-        $user = User::withoutTenant()
-            ->where('user_id', $pfno)
-            ->where('is_active', true)
-            ->first();
-
-        if (!$user) {
-            return null;
-        }
-
-        // Return object in the same format as HRPD query
-        $nameParts = explode(' ', $user->name, 3);
-        return (object) [
-            'national_id' => $user->user_id,
-            'pfno' => $user->user_id,
-            'positionid' => null,
-            'du_id' => null,
-            'fname' => $nameParts[0] ?? '',
-            'mname' => $nameParts[1] ?? '',
-            'sname' => $nameParts[2] ?? '',
-            'gender' => null,
-            'office_code' => null,
-            'office_name' => null,
-            'mobile' => null,
-            'email' => $user->email,
-        ];
+    
     }
 
     public function getEmployeeProfile(string $pfno): ?object
     {
-        // Use local users table
-        return $this->getEmployeeByPfnoLocal($pfno);
         
-        // Production: Use HRPD database
-        // TODO: Uncomment when moving to production with HRPD server and DB schema hosted
-        /*
+        // Preprod: Use HRPD database
+        
         $query = "SELECT A.NATIONAL_ID, A.PFNO, A.FNAME, A.MNAME, A.SNAME, A.GENDER, C.OFFICE_CODE, B.OFFICE_NAME, B.POSITIONID, A.MOBILE, A.EMAIL 
                   FROM HRPD.EMPLOYEE A 
                   JOIN HRPD.VW_EMPLOYEE_DETAILS B ON B.PFNO = A.PFNO 
@@ -140,7 +51,7 @@ class AuthRepository
                   WHERE A.PFNO=? AND A.EMPLOYEE_STATUS='A'";
         
         return DB::selectOne($query, [$pfno]);
-        */
+        
     }
 
     public function findUserByPfno(string $pfno): ?User
@@ -166,7 +77,7 @@ class AuthRepository
 
     public function getUserRoles(string $pfno): array
     {
-        // Find user by user_id (pfno) to get the actual user ID
+        // Preprod: Find user by user_id (pfno) to get the actual user ID
         $user = User::withoutTenant()->where('user_id', $pfno)->first();
         if (!$user) {
             return [];
