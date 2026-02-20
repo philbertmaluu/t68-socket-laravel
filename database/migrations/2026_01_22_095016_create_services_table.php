@@ -30,8 +30,7 @@ return new class extends Migration
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
 
-            // Indexes
-            $table->index('id', 'idx_services_id');
+            // Indexes (no index on id - Oracle indexes primary key automatically)
             $table->index('tenant_id', 'idx_services_tenant_id');
             $table->index('office_id', 'idx_services_office_id');
             $table->index('region_id', 'idx_services_region_id');
