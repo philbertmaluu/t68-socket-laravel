@@ -11,16 +11,22 @@ return new class extends Migration
     {
         Schema::create('handovers', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_role_id')->constrained('user_roles')->onDelete('cascade');
-            $table->foreignId('from_user_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('to_user_id')->constrained('users')->onDelete('cascade');
-            $table->foreignId('role_id')->constrained('roles')->onDelete('cascade');
+            $table->unsignedBigInteger('user_role_id');
+            $table->unsignedBigInteger('from_user_id');
+            $table->unsignedBigInteger('to_user_id');
+            $table->unsignedBigInteger('role_id');
             $table->timestamp('handover_date');
             $table->string('status', 20)->default('active');
             $table->text('notes')->nullable();
-            $table->foreignId('created_by')->nullable()->constrained('users')->onDelete('set null');
+            $table->unsignedBigInteger('created_by')->nullable();
             $table->timestamps();
             $table->softDeletes();
+
+            $table->foreign('user_role_id')->references('id')->on('user_roles')->onDelete('cascade');
+            $table->foreign('from_user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('to_user_id')->references('id')->on('users')->onDelete('cascade');
+            $table->foreign('role_id')->references('id')->on('roles')->onDelete('cascade');
+            $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');
 
             $table->index('from_user_id', 'idx_handovers_from_user_id');
             $table->index('to_user_id', 'idx_handovers_to_user_id');

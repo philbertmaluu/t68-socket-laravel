@@ -13,8 +13,8 @@ return new class extends Migration
     {
         Schema::create('counter_clerk', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('tenant_id');
-            $table->foreignId('counter_id')->constrained('counters')->onDelete('cascade');
+            $table->unsignedBigInteger('tenant_id');
+            $table->unsignedBigInteger('counter_id');
             $table->string('clerk_id', 50);
             $table->boolean('is_active')->default(true);
             $table->timestamp('assigned_at')->useCurrent();
@@ -27,6 +27,7 @@ return new class extends Migration
 
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
+            $table->foreign('counter_id')->references('id')->on('counters')->onDelete('cascade');
 
             // Indexes
             $table->index('tenant_id', 'idx_counter_clerk_tenant_id');

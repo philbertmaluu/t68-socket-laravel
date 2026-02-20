@@ -13,7 +13,7 @@ return new class extends Migration
 
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('tenant_id')->nullable()->constrained('tenants')->onDelete('cascade');
+            $table->unsignedBigInteger('tenant_id')->nullable();
             $table->string('user_id', 50);
             $table->string('user_type', 20)->default('staff');
             $table->string('name', 100)->unique();
@@ -24,9 +24,9 @@ return new class extends Migration
             $table->string('refresh_token', 255)->nullable();
             $table->timestamp('email_verified_at')->nullable();
             $table->rememberToken();
-            $table->foreignId('created_by')->nullable();
-            $table->foreignId('updated_by')->nullable();
-            $table->foreignId('deleted_by')->nullable();
+            $table->unsignedBigInteger('created_by')->nullable();
+            $table->unsignedBigInteger('updated_by')->nullable();
+            $table->unsignedBigInteger('deleted_by')->nullable();
             $table->timestamps();
             $table->softDeletes();
 
@@ -35,6 +35,8 @@ return new class extends Migration
             $table->index('user_id', 'idx_users_user_id');
             $table->index('tenant_id', 'idx_users_tenant_id');
             $table->index('deleted_at', 'idx_users_deleted_at');
+
+            $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
         });
 
         if (Schema::getConnection()->getDriverName() === 'oracle') {

@@ -13,11 +13,11 @@ return new class extends Migration
     {
         Schema::create('tickets', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('tenant_id');
+            $table->unsignedBigInteger('tenant_id');
             $table->string('ticket_number', 50);
             $table->string('service_type', 200);
             $table->string('service_id', 50)->nullable();
-            $table->foreignId('queue_id'); // References queues table (auto-incrementing id)
+            $table->unsignedBigInteger('queue_id');
             $table->string('member_number', 50)->nullable();
             $table->string('member_name', 200)->nullable();
             $table->string('phone_number', 20)->nullable();

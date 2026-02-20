@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('audit_trails', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('tenant_id')->nullable();
+            $table->unsignedBigInteger('tenant_id')->nullable();
             $table->string('auditable_type', 255);
             $table->unsignedBigInteger('auditable_id');
             $table->string('event', 50); // created, updated, deleted, restored

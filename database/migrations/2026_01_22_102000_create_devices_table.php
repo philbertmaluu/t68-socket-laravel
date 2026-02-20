@@ -14,7 +14,7 @@ return new class extends Migration
     {
         Schema::create('devices', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('tenant_id');
+            $table->unsignedBigInteger('tenant_id');
             $table->string('name', 200);
             $table->string('type', 20)->default('kiosk');
             $table->string('status', 20)->default('offline');

@@ -14,7 +14,7 @@ return new class extends Migration
     {
         Schema::create('queues', function (Blueprint $table) {
             $table->id(); // Auto-incrementing primary key
-            $table->foreignId('counter_id'); // Queue is tied to a counter (1:1 relationship)
+            $table->unsignedBigInteger('counter_id');
             $table->string('name', 200); // Queue name (usually same as counter name)
             $table->string('status', 20)->default('NORMAL');
             $table->integer('members_waiting')->default(0); // Number of tickets waiting

@@ -14,7 +14,7 @@ return new class extends Migration
     {
         Schema::create('counter_types', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('tenant_id');
+            $table->unsignedBigInteger('tenant_id');
             $table->string('name', 200);
             $table->string('code', 50)->unique();
             $table->text('description')->nullable();

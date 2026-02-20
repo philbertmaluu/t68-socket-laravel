@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('service_documents', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('tenant_id');
+            $table->unsignedBigInteger('tenant_id');
             $table->string('service_id', 50);
             $table->string('document_name', 200);
             $table->boolean('is_required')->default(true);
