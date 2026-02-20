@@ -64,6 +64,6 @@ class CounterType extends Model
 
     public function counters(): HasMany
     {
-        return $this->hasMany(\App\Domains\Counter\Models\Counter::class, 'type', 'id');
+        return $this->hasMany(\App\Domains\Counter\Models\Counter::class, 'counter_type_id', 'id');
     }
 }

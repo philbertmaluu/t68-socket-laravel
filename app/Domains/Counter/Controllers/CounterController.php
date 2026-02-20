@@ -23,7 +23,7 @@ class CounterController extends BaseController
         try {
             $perPage = (int) $request->get('per_page', 15);
             $page = (int) $request->get('page', 1);
-            $filters = $request->only(['status', 'type', 'service_id', 'office_id']);
+            $filters = $request->only(['status', 'counter_type_id', 'service_id', 'office_id']);
 
             $result = $this->service->paginate($perPage, $page, $filters);
 

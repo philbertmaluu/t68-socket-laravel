@@ -22,7 +22,7 @@ class Counter extends Model
         'id',
         'tenant_id',
         'name',
-        'type',
+        'counter_type_id',
         'service_id',
         'status',
         'office_id',
@@ -47,7 +47,7 @@ class Counter extends Model
 
     public function counterType(): BelongsTo
     {
-        return $this->belongsTo(\App\Domains\CounterType\Models\CounterType::class, 'type', 'id');
+        return $this->belongsTo(\App\Domains\CounterType\Models\CounterType::class, 'counter_type_id', 'id');
     }
 
     public static function getStatuses(): array
@@ -87,7 +87,7 @@ class Counter extends Model
 
     public function scopeOfType($query, string $type)
     {
-        return $query->where('type', $type);
+        return $query->where('counter_type_id', $type);
     }
 
     public function scopeForService($query, string $serviceId)

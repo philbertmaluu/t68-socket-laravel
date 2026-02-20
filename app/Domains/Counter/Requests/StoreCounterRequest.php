@@ -15,7 +15,7 @@ class StoreCounterRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:200'],
-            'type' => ['required', 'exists:counter_types,id'],
+            'counter_type_id' => ['required', 'exists:counter_types,id'],
             'service_id' => ['required', 'exists:services,id'],
             'status' => ['sometimes', 'string', 'in:ACTIVE,INACTIVE,MAINTENANCE'],
             'office_id' => ['sometimes', 'string', 'max:50'],
@@ -26,8 +26,8 @@ class StoreCounterRequest extends FormRequest
     {
         return [
             'name.required' => 'Counter name is required',
-            'type.required' => 'Counter type is required',
-            'type.exists' => 'Selected counter type does not exist',
+            'counter_type_id.required' => 'Counter type is required',
+            'counter_type_id.exists' => 'Selected counter type does not exist',
             'service_id.required' => 'Service is required',
             'service_id.exists' => 'Selected service does not exist',
         ];

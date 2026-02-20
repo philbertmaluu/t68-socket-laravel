@@ -27,8 +27,8 @@ class CounterRepository
             $query->where('status', $filters['status']);
         }
 
-        if (isset($filters['type'])) {
-            $query->where('type', $filters['type']);
+        if (isset($filters['counter_type_id'])) {
+            $query->where('counter_type_id', $filters['counter_type_id']);
         }
 
         if (isset($filters['service_id'])) {
@@ -81,8 +81,8 @@ class CounterRepository
             $query->where('status', $filters['status']);
         }
 
-        if (isset($filters['type'])) {
-            $query->where('type', $filters['type']);
+        if (isset($filters['counter_type_id'])) {
+            $query->where('counter_type_id', $filters['counter_type_id']);
         }
 
         if (isset($filters['service_id'])) {

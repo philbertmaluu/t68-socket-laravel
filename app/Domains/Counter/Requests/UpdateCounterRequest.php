@@ -16,7 +16,7 @@ class UpdateCounterRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'string', 'max:200'],
-            'type' => ['sometimes', 'exists:counter_types,id'],
+            'counter_type_id' => ['sometimes', 'exists:counter_types,id'],
             'service_id' => ['sometimes', 'exists:services,id'],
             'status' => ['sometimes', 'string', 'in:ACTIVE,INACTIVE,MAINTENANCE'],
             'office_id' => ['sometimes', 'string', 'max:50'],

@@ -16,7 +16,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('tenant_id');
             $table->string('name', 200);
-            $table->foreignId('type');
+            $table->foreignId('counter_type_id');
             $table->foreignId('service_id');
             $table->enum('status', ['ACTIVE', 'INACTIVE', 'MAINTENANCE'])->default('ACTIVE');
             $table->string('office_id', 50);
@@ -28,14 +28,14 @@ return new class extends Migration
 
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
-            $table->foreign('type')->references('id')->on('counter_types')->onDelete('restrict');
+            $table->foreign('counter_type_id')->references('id')->on('counter_types')->onDelete('restrict');
             $table->foreign('service_id')->references('id')->on('services')->onDelete('restrict');
 
             // Indexes
             $table->index('tenant_id', 'idx_counters_tenant_id');
             $table->index('office_id', 'idx_counters_office_id');
             $table->index('status', 'idx_counters_status');
-            $table->index('type', 'idx_counters_type');
+            $table->index('counter_type_id', 'idx_counters_counter_type_id');
             $table->index('service_id', 'idx_counters_service_id');
             $table->index('deleted_at', 'idx_counters_deleted_at');
         });
