@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -16,8 +17,8 @@ return new class extends Migration
             $table->foreignId('tenant_id');
             $table->string('name', 200);
             $table->text('description')->nullable();
-            $table->integer('estimated_time')->comment('in minutes');
-            $table->string('status', 20)->default('ACTIVE')->comment("Values: 'ACTIVE', 'INACTIVE'");
+            $table->integer('estimated_time');
+            $table->string('status', 20)->default('ACTIVE');
             $table->string('region_id', 50);
             $table->string('office_id', 50);
             $table->string('created_by', 50)->nullable();
@@ -37,6 +38,10 @@ return new class extends Migration
             $table->index('status', 'idx_services_status_index');
             $table->index('deleted_at', 'idx_services_deleted_at');
         });
+
+        if (Schema::getConnection()->getDriverName() === 'oracle') {
+            DB::statement("ALTER TABLE services ADD CONSTRAINT chk_services_status CHECK (status IN ('ACTIVE', 'INACTIVE'))");
+        }
     }
 
     /**

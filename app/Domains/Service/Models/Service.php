@@ -46,10 +46,7 @@ class Service extends Model
 
     public static function getStatuses(): array
     {
-        return [
-            'ACTIVE',
-            'INACTIVE',
-        ];
+        return ['ACTIVE', 'INACTIVE'];
     }
 
     public function isActive(): bool

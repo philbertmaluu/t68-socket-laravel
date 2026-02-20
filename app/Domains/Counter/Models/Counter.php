@@ -52,11 +52,7 @@ class Counter extends Model
 
     public static function getStatuses(): array
     {
-        return [
-            'ACTIVE',
-            'INACTIVE',
-            'MAINTENANCE',
-        ];
+        return ['ACTIVE', 'INACTIVE', 'MAINTENANCE'];
     }
 
     public function isActive(): bool

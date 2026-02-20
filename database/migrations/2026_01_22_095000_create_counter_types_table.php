@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -17,7 +18,7 @@ return new class extends Migration
             $table->string('name', 200);
             $table->string('code', 50)->unique();
             $table->text('description')->nullable();
-            $table->string('status', 20)->default('ACTIVE')->comment("Values: 'ACTIVE', 'INACTIVE'");
+            $table->enum('status', ['ACTIVE', 'INACTIVE'])->default('ACTIVE');
             $table->string('created_by', 50)->nullable();
             $table->string('updated_by', 50)->nullable();
             $table->string('deleted_by', 50)->nullable();
@@ -32,6 +33,10 @@ return new class extends Migration
             $table->index('status', 'idx_counter_types_status');
             $table->index('deleted_at', 'idx_counter_types_deleted_at');
         });
+
+        if (Schema::getConnection()->getDriverName() === 'oracle') {
+            DB::statement("ALTER TABLE counter_types ADD CONSTRAINT chk_counter_types_status CHECK (status IN ('ACTIVE', 'INACTIVE'))");
+        }
     }
 
     /**
