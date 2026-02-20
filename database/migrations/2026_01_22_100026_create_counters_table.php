@@ -14,10 +14,10 @@ return new class extends Migration
     {
         Schema::create('counters', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('tenant_id');
+            $table->unsignedBigInteger('tenant_id');
             $table->string('name', 200);
-            $table->foreignId('counter_type_id');
-            $table->foreignId('service_id');
+            $table->unsignedBigInteger('counter_type_id');
+            $table->unsignedBigInteger('service_id');
             $table->string('status', 20)->default('ACTIVE');
             $table->string('office_id', 50);
             $table->string('created_by', 50)->nullable();
