@@ -41,7 +41,7 @@ return new class extends Migration
 
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
-            $table->foreign('queue_id')->references('id')->on('queues')->onDelete('restrict');
+            $table->foreign('queue_id')->references('id')->on('queues');
 
             // Indexes
             $table->index('tenant_id', 'idx_tickets_tenant_id');

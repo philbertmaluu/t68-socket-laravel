@@ -14,7 +14,7 @@ return new class extends Migration
         // Only add queue_position if tickets table exists and column doesn't exist
         if (Schema::hasTable('tickets') && !Schema::hasColumn('tickets', 'queue_position')) {
             Schema::table('tickets', function (Blueprint $table) {
-                $table->integer('queue_position')->nullable()->after('status');
+                $table->integer('queue_position')->nullable();
                 $table->index(['queue_id', 'status', 'queue_position'], 'idx_tickets_queue_status_position');
             });
         }

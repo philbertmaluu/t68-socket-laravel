@@ -28,8 +28,8 @@ return new class extends Migration
 
             // Foreign key constraints
             $table->foreign('tenant_id')->references('id')->on('tenants')->onDelete('cascade');
-            $table->foreign('counter_type_id')->references('id')->on('counter_types')->onDelete('restrict');
-            $table->foreign('service_id')->references('id')->on('services')->onDelete('restrict');
+            $table->foreign('counter_type_id')->references('id')->on('counter_types');
+            $table->foreign('service_id')->references('id')->on('services');
 
             // Indexes
             $table->index('tenant_id', 'idx_counters_tenant_id');
