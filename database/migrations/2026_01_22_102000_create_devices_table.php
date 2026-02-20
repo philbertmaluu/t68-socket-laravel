@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -45,6 +46,11 @@ return new class extends Migration
             $table->index('serial_number', 'idx_devices_serial_number');
             $table->index('deleted_at', 'idx_devices_deleted_at');
         });
+
+        if (Schema::getConnection()->getDriverName() === 'oracle') {
+            DB::statement("ALTER TABLE devices ADD CONSTRAINT chk_devices_type CHECK (type IN ('kiosk', 'tv'))");
+            DB::statement("ALTER TABLE devices ADD CONSTRAINT chk_devices_status CHECK (status IN ('online', 'offline', 'maintenance'))");
+        }
     }
 
     /**

@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -33,6 +34,10 @@ return new class extends Migration
             // Unique constraint: one queue per counter
             $table->unique('counter_id', 'idx_queues_counter_unique');
         });
+
+        if (Schema::getConnection()->getDriverName() === 'oracle') {
+            DB::statement("ALTER TABLE queues ADD CONSTRAINT chk_queues_status CHECK (status IN ('BUSY', 'NORMAL', 'CRITICAL', 'FREE'))");
+        }
     }
 
     /**

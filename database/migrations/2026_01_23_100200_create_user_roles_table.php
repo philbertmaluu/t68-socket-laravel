@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -29,6 +30,10 @@ return new class extends Migration
             $table->index('end_date', 'idx_user_roles_end_date');
             $table->index('deleted_at', 'idx_user_roles_deleted_at');
         });
+
+        if (Schema::getConnection()->getDriverName() === 'oracle') {
+            DB::statement("ALTER TABLE user_roles ADD CONSTRAINT chk_user_roles_status CHECK (status IN ('active', 'handover', 'inactive'))");
+        }
     }
 
     public function down(): void
