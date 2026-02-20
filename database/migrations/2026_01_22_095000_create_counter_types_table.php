@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('name', 200);
             $table->string('code', 50)->unique();
             $table->text('description')->nullable();
-            $table->enum('status', ['ACTIVE', 'INACTIVE'])->default('ACTIVE');
+            $table->string('status', 20)->default('ACTIVE');
             $table->string('created_by', 50)->nullable();
             $table->string('updated_by', 50)->nullable();
             $table->string('deleted_by', 50)->nullable();

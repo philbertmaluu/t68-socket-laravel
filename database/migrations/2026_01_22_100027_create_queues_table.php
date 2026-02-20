@@ -16,7 +16,7 @@ return new class extends Migration
             $table->id(); // Auto-incrementing primary key
             $table->foreignId('counter_id'); // Queue is tied to a counter (1:1 relationship)
             $table->string('name', 200); // Queue name (usually same as counter name)
-            $table->enum('status', ['BUSY', 'NORMAL', 'CRITICAL', 'FREE'])->default('NORMAL'); // Enum: 'busy', 'normal', 'critical', 'free'
+            $table->string('status', 20)->default('NORMAL');
             $table->integer('members_waiting')->default(0); // Number of tickets waiting
             $table->integer('members_being_served')->default(0); // Number of tickets currently being served
             $table->integer('average_wait_time')->default(0); // Average wait time in minutes

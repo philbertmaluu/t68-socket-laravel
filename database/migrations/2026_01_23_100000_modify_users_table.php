@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('tenant_id')->nullable()->constrained('tenants')->onDelete('cascade');
             $table->string('user_id', 50);
-            $table->enum('user_type', ['staff', 'member', 'employer', 'supplier'])->default('staff');
+            $table->string('user_type', 20)->default('staff');
             $table->string('name', 100)->unique();
             $table->string('email', 255)->unique()->nullable();
             $table->string('password', 255);

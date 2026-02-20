@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('name', 200);
             $table->foreignId('counter_type_id');
             $table->foreignId('service_id');
-            $table->enum('status', ['ACTIVE', 'INACTIVE', 'MAINTENANCE'])->default('ACTIVE');
+            $table->string('status', 20)->default('ACTIVE');
             $table->string('office_id', 50);
             $table->string('created_by', 50)->nullable();
             $table->string('updated_by', 50)->nullable();

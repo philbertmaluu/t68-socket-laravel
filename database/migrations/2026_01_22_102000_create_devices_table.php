@@ -16,8 +16,8 @@ return new class extends Migration
             $table->id();
             $table->foreignId('tenant_id');
             $table->string('name', 200);
-            $table->enum('type', ['kiosk', 'tv'])->default('kiosk');
-            $table->enum('status', ['online', 'offline', 'maintenance'])->default('offline');
+            $table->string('type', 20)->default('kiosk');
+            $table->string('status', 20)->default('offline');
             $table->string('region_id', 50);
             $table->string('office_id', 50);
             $table->string('serial_number', 100)->unique();

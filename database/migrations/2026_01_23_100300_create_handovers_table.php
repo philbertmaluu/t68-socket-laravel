@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('to_user_id')->constrained('users')->onDelete('cascade');
             $table->foreignId('role_id')->constrained('roles')->onDelete('cascade');
             $table->timestamp('handover_date');
-            $table->enum('status', ['active', 'completed', 'cancelled'])->default('active');
+            $table->string('status', 20)->default('active');
             $table->text('notes')->nullable();
             $table->foreignId('created_by')->nullable()->constrained('users')->onDelete('set null');
             $table->timestamps();
