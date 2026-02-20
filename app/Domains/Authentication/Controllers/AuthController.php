@@ -88,25 +88,5 @@ class AuthController extends BaseController
         }
     }
 
-    /**
-     * Dev-only login endpoint.
-     *
-     * This is intended for LOCAL DEVELOPMENT ONLY.
-     * It bypasses the external SSO/HR token and issues a Sanctum token
-     * for a configured dev user, returning the same structure as authenticate().
-     */
-    public function devLogin(): JsonResponse
-    {
-        try {
-            if (!app()->environment('local')) {
-                return $this->sendError('Dev login is only available in local environment.', [], 403);
-            }
-
-            $result = $this->service->devAuthenticate();
-
-            return $this->sendResponse($result, 'Dev authenticated successfully.');
-        } catch (\Exception $e) {
-            return $this->sendError('Failed dev authentication.', ['error' => $e->getMessage()], 401);
-        }
-    }
+   
 }
