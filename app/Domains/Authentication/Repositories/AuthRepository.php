@@ -10,7 +10,7 @@ class AuthRepository
     public function getEmployeeByToken(string $token): ?object
     {
 
-        // Preprod: Use HRPD database link
+        // Use HRPD database link
         $query = "select a.national_id, a.pfno, b.positionid, a.fname, a.mname, a.sname, a.gender, c.office_code, b.office_name, a.mobile, a.email, b.du_id 
                   from hrpd.employee@preprod a 
                   join hrpd.vw_employee_details@preprod b on b.pfno = a.pfno 
@@ -27,7 +27,7 @@ class AuthRepository
     {
        
         
-        // Preprod: Use HRPD database
+        // Use HRPD database
     
         $query = "select a.national_id, a.pfno, b.positionid, b.du_id, a.fname, a.mname, a.sname, a.gender, c.office_code, b.office_name, a.mobile, a.email 
                   from hrpd.employee a 
@@ -42,7 +42,7 @@ class AuthRepository
     public function getEmployeeProfile(string $pfno): ?object
     {
         
-        // Preprod: Use HRPD database
+        // Use HRPD database
         
         $query = "SELECT A.NATIONAL_ID, A.PFNO, A.FNAME, A.MNAME, A.SNAME, A.GENDER, C.OFFICE_CODE, B.OFFICE_NAME, B.POSITIONID, A.MOBILE, A.EMAIL 
                   FROM HRPD.EMPLOYEE A 
@@ -77,7 +77,7 @@ class AuthRepository
 
     public function getUserRoles(string $pfno): array
     {
-        // Preprod: Find user by user_id (pfno) to get the actual user ID
+        // Find user by user_id (pfno) to get the actual user ID
         $user = User::withoutTenant()->where('user_id', $pfno)->first();
         if (!$user) {
             return [];
