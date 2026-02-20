@@ -129,6 +129,17 @@ class AuthService
         return $localModules->concat($externalModules)->concat($publicModules)->toArray();
     }
 
+    public function getModules(): array
+    {
+        return $this->repository->getModulesList()
+            ->map(fn ($row) => [
+                'id' => (string) ($row->module_id ?? $row->id),
+                'module_name' => $row->name,
+            ])
+            ->values()
+            ->all();
+    }
+
     /**
      * Dev-only authentication helper.
      *

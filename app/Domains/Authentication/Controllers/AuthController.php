@@ -78,6 +78,16 @@ class AuthController extends BaseController
         }
     }
 
+    public function modules(): JsonResponse
+    {
+        try {
+            $data = $this->service->getModules();
+            return $this->sendResponse($data, 'Queueing Management System Modules');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to get modules.', ['error' => $e->getMessage()], 500);
+        }
+    }
+
     /**
      * Dev-only login endpoint.
      *

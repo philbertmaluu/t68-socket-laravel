@@ -268,6 +268,15 @@ class AuthRepository
             ->get();
     }
 
+    public function getModulesList(): \Illuminate\Support\Collection
+    {
+        return DB::table('modules')
+            ->where('is_active', true)
+            ->whereNull('deleted_at')
+            ->orderBy('name')
+            ->get();
+    }
+
     public function getPublicModules(): \Illuminate\Support\Collection
     {
         return DB::table('modules as a')

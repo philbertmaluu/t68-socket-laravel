@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Route;
 // Authentication routes (public)
 require app_path('Domains/Authentication/routes.php');
 
-// Public ticket routes (no authentication required)
+// Public routes (no authentication required)
 Route::prefix('qms')->group(function () {
     require app_path('Domains/Ticket/routes.php');
 });
