@@ -21,7 +21,7 @@ class ModuleSeeder extends Seeder
             [
                 'module_id' => '1',
                 'code' => 'CQMS',
-                'name' => 'Core ',
+                'name' => 'Queueing Management',
                 'description' => 'Core Queue Management System ',
                 'is_active' => true,
                 'created_by' => 1,

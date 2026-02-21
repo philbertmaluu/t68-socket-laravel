@@ -18,7 +18,6 @@ class AuthRepository
                   where a.accesstoken=? and a.employee_status='A'";
         
         return DB::selectOne($query, [$token]);
-    
     }
 
     
@@ -28,7 +27,7 @@ class AuthRepository
        
         
         // Use HRPD database
-    
+
         $query = "select a.national_id, a.pfno, b.positionid, b.du_id, a.fname, a.mname, a.sname, a.gender, c.office_code, b.office_name, a.mobile, a.email 
                   from hrpd.employee a 
                   join hrpd.vw_employee_details b on b.pfno = a.pfno 
