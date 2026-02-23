@@ -37,7 +37,10 @@ class DeviceController extends BaseController
     {
         try {
             $device = $this->service->createDevice($request->validated());
-            return $this->sendResponse($device, 'Device created successfully', [], 201);
+            // Include device_key once in response so admin can give it to the device (never shown again)
+            $data = $device->toArray();
+            $data['device_key'] = $device->device_key;
+            return $this->sendResponse($data, 'Device created successfully', [], 201);
         } catch (\Exception $e) {
             return $this->sendError('Failed to create device', ['error' => $e->getMessage()], 500);
         }
@@ -87,6 +90,26 @@ class DeviceController extends BaseController
             return $this->sendResponse(null, 'Device deleted successfully');
         } catch (\Exception $e) {
             return $this->sendError('Failed to delete device', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Regenerate device_key for a device. Revokes all device tokens.
+     * Returns the new device_key once (for admin to give to the device).
+     */
+    public function regenerateKey(string $id): JsonResponse
+    {
+        try {
+            $device = $this->service->findById($id);
+
+            if (!$device) {
+                return $this->sendError('Device not found', [], 404);
+            }
+
+            $newKey = $this->service->regenerateDeviceKey($device);
+            return $this->sendResponse(['device_key' => $newKey], 'Device key regenerated. Store it securely; it will not be shown again.');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to regenerate device key', ['error' => $e->getMessage()], 500);
         }
     }
 }

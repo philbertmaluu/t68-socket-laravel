@@ -22,6 +22,10 @@ return Application::configure(basePath: dirname(__DIR__))
         //
         // If in future you want cookie-based SPA auth, you can re-enable:
         // $middleware->statefulApi();
+
+        $middleware->alias([
+            'device.auth' => \App\Http\Middleware\EnsureDeviceAuthenticated::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Custom exception handling is done in App\Exceptions\Handler

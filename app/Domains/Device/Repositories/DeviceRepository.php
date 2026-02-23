@@ -57,6 +57,16 @@ class DeviceRepository
         return Device::where('serial_number', $serialNumber)->first();
     }
 
+    public function findByDeviceKey(string $deviceKey): ?Device
+    {
+        return Device::where('device_key', $deviceKey)->first();
+    }
+
+    public function findByName(string $name): ?Device
+    {
+        return Device::where('name', $name)->first();
+    }
+
     public function create(array $data): Device
     {
         return Device::create($data);

@@ -23,6 +23,7 @@ class StoreDeviceRequest extends FormRequest
             'serial_number' => ['required', 'string', 'max:100', 'unique:devices,serial_number'],
             'ip_address' => ['nullable', 'string', 'max:50'],
             'password' => ['nullable', 'string', 'max:255'],
+            'device_key' => ['nullable', 'string', 'max:128', 'unique:devices,device_key'],
             'notes' => ['nullable', 'string'],
         ];
     }

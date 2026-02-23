@@ -30,6 +30,13 @@ class UpdateDeviceRequest extends FormRequest
             ],
             'ip_address' => ['nullable', 'string', 'max:50'],
             'password' => ['nullable', 'string', 'max:255'],
+            'device_key' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:128',
+                Rule::unique('devices', 'device_key')->ignore($deviceId),
+            ],
             'notes' => ['nullable', 'string'],
         ];
     }

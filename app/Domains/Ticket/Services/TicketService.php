@@ -151,8 +151,8 @@ class TicketService
         $queueId = DB::table('queues')->insertGetId([
             'counter_id' => $counter->id,
             'name' => $counter->name . ' Queue',
-            'status' => 'Free', // Enum: 'Busy', 'Normal', 'Critical', 'Free'
-            'members_waiting' => 0,
+            'status' => 'Normal', // Enum: 'Busy', 'Normal', 'Critical', 'Free'
+            'members_waiting' => 1,
             'members_being_served' => 0,
             'average_wait_time' => 0,
             'office_id' => $officeId,

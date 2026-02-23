@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Str;
 
 class Device extends Model
 {
@@ -28,6 +29,7 @@ class Device extends Model
         'serial_number',
         'ip_address',
         'password',
+        'device_key',
         'last_seen',
         'notes',
         'created_by',
@@ -44,6 +46,7 @@ class Device extends Model
 
     protected $hidden = [
         'password',
+        'device_key',
     ];
 
     public const TYPE_KIOSK = 'KIOSK';
@@ -60,6 +63,10 @@ class Device extends Model
         static::saving(function ($device) {
             if ($device->isDirty('password') && !empty($device->password)) {
                 $device->password = Crypt::encryptString($device->password);
+            }
+            // Auto-generate device_key on create if not provided
+            if ($device->exists === false && empty($device->device_key)) {
+                $device->device_key = Str::random(64);
             }
         });
     }
@@ -157,5 +164,10 @@ class Device extends Model
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(\App\Domains\Tenant\Models\Tenant::class, 'tenant_id', 'id');
+    }
+
+    public function deviceTokens(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(DeviceToken::class, 'device_id', 'id');
     }
 }

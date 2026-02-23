@@ -1,5 +1,6 @@
 <?php
 
+use App\Domains\Device\Controllers\DeviceAuthController;
 use Illuminate\Support\Facades\Route;
 
 // Authentication routes (public)
@@ -8,9 +9,15 @@ require app_path('Domains/Authentication/routes.php');
 // Public routes (no authentication required)
 Route::prefix('qms')->group(function () {
     require app_path('Domains/Ticket/routes.php');
+    Route::post('devices/authenticate', [DeviceAuthController::class, 'authenticate']);
 });
 
-// Protected API routes
+// Device-authenticated routes (X-Device-Token or Authorization: Bearer <device_token>)
+Route::prefix('qms')->middleware('device.auth')->group(function () {
+    Route::patch('devices/me', [DeviceAuthController::class, 'updateSession']);
+});
+
+// Protected API routes (Sanctum)
 Route::prefix('qms')->middleware('auth:sanctum')->group(function () {
     // Domain routes
     require app_path('Domains/Tenant/routes.php');
