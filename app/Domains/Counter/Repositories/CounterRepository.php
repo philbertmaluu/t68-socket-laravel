@@ -32,7 +32,7 @@ class CounterRepository
         }
 
         if (isset($filters['service_id'])) {
-            $query->where('service_id', $filters['service_id']);
+            $query->whereHas('services', fn ($q) => $q->where('services.id', $filters['service_id']));
         }
 
         if (isset($filters['office_id'])) {
@@ -50,13 +50,40 @@ class CounterRepository
 
     public function create(array $data): Counter
     {
-        return Counter::create($data);
+        $officeId = $data['office_id'] ?? '1';
+        $serviceIds = $data['service_ids'] ?? [];
+        $serviceIds = is_array($serviceIds) ? array_map('intval', array_values($serviceIds)) : [];
+
+        $payload = $data;
+        unset($payload['service_ids']);
+        $counter = Counter::create($payload);
+
+        if (count($serviceIds) > 0) {
+            $sync = [];
+            foreach ($serviceIds as $id) {
+                $sync[$id] = ['office_id' => $officeId];
+            }
+            $counter->services()->sync($sync);
+        }
+
+        return $counter->load('services');
     }
 
     public function update(Counter $counter, array $data): Counter
     {
+        $officeId = $data['office_id'] ?? $counter->office_id ?? '1';
+        $serviceIds = $data['service_ids'] ?? null;
+        if ($serviceIds !== null && is_array($serviceIds)) {
+            $serviceIds = array_map('intval', array_values($serviceIds));
+            $sync = [];
+            foreach ($serviceIds as $id) {
+                $sync[$id] = ['office_id' => $officeId];
+            }
+            $counter->services()->sync($sync);
+        }
+        unset($data['service_ids']);
         $counter->update($data);
-        return $counter->fresh();
+        return $counter->fresh(['services']);
     }
 
     public function delete(Counter $counter, bool $force = false): bool
@@ -75,7 +102,7 @@ class CounterRepository
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
         [$page, $perPage] = PaginationHelper::validateParams($page, $perPage);
-        $query = Counter::query()->with(['counterType', 'service']);
+        $query = Counter::query()->with(['counterType', 'services']);
 
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
@@ -86,7 +113,7 @@ class CounterRepository
         }
 
         if (isset($filters['service_id'])) {
-            $query->where('service_id', $filters['service_id']);
+            $query->whereHas('services', fn ($q) => $q->where('services.id', $filters['service_id']));
         }
 
         if (isset($filters['office_id'])) {

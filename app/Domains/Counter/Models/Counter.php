@@ -7,6 +7,7 @@ use App\Shared\Traits\HasTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Domains\Tenant\Models\Tenant;
@@ -23,7 +24,6 @@ class Counter extends Model
         'tenant_id',
         'name',
         'counter_type_id',
-        'service_id',
         'status',
         'office_id',
         'created_by',
@@ -40,9 +40,17 @@ class Counter extends Model
         ];
     }
 
-    public function service(): BelongsTo
+    /** One counter has many services via counter_services (counter_id, service_id, office_id). */
+    public function services(): BelongsToMany
     {
-        return $this->belongsTo(\App\Domains\Service\Models\Service::class, 'service_id', 'id');
+        return $this->belongsToMany(
+            \App\Domains\Service\Models\Service::class,
+            'counter_services',
+            'counter_id',
+            'service_id',
+            'id',
+            'id'
+        )->withPivot('office_id')->withTimestamps();
     }
 
     public function counterType(): BelongsTo
@@ -92,7 +100,7 @@ class Counter extends Model
 
     public function scopeForService($query, string $serviceId)
     {
-        return $query->where('service_id', $serviceId);
+        return $query->whereHas('services', fn ($q) => $q->where('services.id', $serviceId));
     }
 
     public function counterClerks(): HasMany

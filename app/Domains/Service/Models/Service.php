@@ -9,6 +9,7 @@ use App\Shared\Traits\HasTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -87,5 +88,18 @@ class Service extends Model
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class, 'tenant_id', 'id');
+    }
+
+    /** Counters that offer this service (via counter_services pivot). */
+    public function counters(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            \App\Domains\Counter\Models\Counter::class,
+            'counter_services',
+            'service_id',
+            'counter_id',
+            'id',
+            'id'
+        )->withPivot('office_id')->withTimestamps();
     }
 }
