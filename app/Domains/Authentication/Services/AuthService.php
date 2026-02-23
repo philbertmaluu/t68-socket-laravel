@@ -135,6 +135,7 @@ class AuthService
             ->map(fn ($row) => [
                 'id' => (string) ($row->module_id ?? $row->id),
                 'module_name' => $row->name,
+                'description' => $row->description ?? null,
             ])
             ->values()
             ->all();
