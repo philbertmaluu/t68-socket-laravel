@@ -75,7 +75,7 @@ class CounterRepository
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
         [$page, $perPage] = PaginationHelper::validateParams($page, $perPage);
-        $query = Counter::query();
+        $query = Counter::query()->with(['counterType', 'service']);
 
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
