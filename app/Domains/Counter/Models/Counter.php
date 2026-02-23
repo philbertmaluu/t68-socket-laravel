@@ -50,7 +50,7 @@ class Counter extends Model
             'service_id',
             'id',
             'id'
-        )->withPivot('office_id')->withTimestamps();
+        )->using(CounterServicePivot::class)->withPivot('office_id', 'tenant_id')->withTimestamps();
     }
 
     public function counterType(): BelongsTo
