@@ -27,6 +27,9 @@ class DeviceController extends BaseController
 
             $result = $this->service->paginate($perPage, $page, $filters);
 
+            // Include device_key in list so admins can view/copy (route is Sanctum-protected)
+            $result['data']->each(fn ($device) => $device->makeVisible('device_key'));
+
             return $this->sendResponse($result['data'], 'Devices retrieved successfully', ['meta' => $result['meta']]);
         } catch (\Exception $e) {
             return $this->sendError('Failed to retrieve devices', ['error' => $e->getMessage()], 500);
