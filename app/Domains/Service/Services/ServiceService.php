@@ -64,4 +64,12 @@ class ServiceService
     {
         return $this->repository->paginate($perPage, $page, $filters);
     }
+
+    /**
+     * List active services for public/kiosk (no Sanctum). Optionally by office_id.
+     */
+    public function listPublic(int $perPage = 500, int $page = 1, ?string $officeId = null): array
+    {
+        return $this->repository->listPublic($perPage, $page, $officeId);
+    }
 }

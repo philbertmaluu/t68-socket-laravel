@@ -100,4 +100,28 @@ class ServiceRepository
             'meta' => $meta,
         ];
     }
+
+    /**
+     * List active services for public/kiosk (no auth). Optionally filter by office_id.
+     * Bypasses tenant scope so kiosk can list by office without Sanctum.
+     */
+    public function listPublic(int $perPage = 500, int $page = 1, ?string $officeId = null): array
+    {
+        [$page, $perPage] = PaginationHelper::validateParams($page, $perPage);
+        $query = Service::withoutTenant()
+            ->where('status', 'ACTIVE');
+
+        if ($officeId !== null && $officeId !== '') {
+            $query->where('office_id', $officeId);
+        }
+
+        $total = $query->count();
+        $items = $query->orderBy('name')->skip(($page - 1) * $perPage)->take($perPage)->get();
+        $meta = PaginationHelper::calculateMeta($total, $perPage, $page);
+
+        return [
+            'data' => $items,
+            'meta' => $meta,
+        ];
+    }
 }
