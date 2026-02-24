@@ -64,9 +64,9 @@ class Device extends Model
             if ($device->isDirty('password') && !empty($device->password)) {
                 $device->password = Crypt::encryptString($device->password);
             }
-            // Auto-generate device_key on create if not provided
+            // Auto-generate device_key on create if not provided (10 chars: A-Z and 0-9)
             if ($device->exists === false && empty($device->device_key)) {
-                $device->device_key = Str::random(64);
+                $device->device_key = strtoupper(Str::random(10));
             }
         });
     }

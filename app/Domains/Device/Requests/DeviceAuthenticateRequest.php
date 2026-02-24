@@ -14,9 +14,17 @@ class DeviceAuthenticateRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'device_key' => ['nullable', 'string', 'max:128'],
+            'device_key' => ['nullable', 'string', 'size:10', 'regex:/^[A-Z0-9]{10}$/'],
             'name' => ['nullable', 'string', 'max:200'],
             'password' => ['nullable', 'string', 'max:255'],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'device_key.regex' => 'The device key must be exactly 10 characters: uppercase letters and numbers only.',
+            'device_key.size' => 'The device key must be exactly 10 characters.',
         ];
     }
 

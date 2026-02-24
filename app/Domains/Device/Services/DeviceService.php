@@ -131,7 +131,7 @@ class DeviceService
     {
         return TransactionHelper::execute(function () use ($device) {
             DeviceToken::where('device_id', $device->id)->delete();
-            $newKey = Str::random(64);
+            $newKey = strtoupper(Str::random(10));
             $device->update(['device_key' => $newKey]);
             return $newKey;
         });

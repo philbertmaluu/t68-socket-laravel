@@ -23,7 +23,7 @@ class StoreDeviceRequest extends FormRequest
             'serial_number' => ['required', 'string', 'max:100', 'unique:devices,serial_number'],
             'ip_address' => ['nullable', 'string', 'max:50'],
             'password' => ['nullable', 'string', 'max:255'],
-            'device_key' => ['nullable', 'string', 'max:128', 'unique:devices,device_key'],
+            'device_key' => ['nullable', 'string', 'size:10', 'regex:/^[A-Z0-9]{10}$/', 'unique:devices,device_key'],
             'notes' => ['nullable', 'string'],
         ];
     }
@@ -37,6 +37,8 @@ class StoreDeviceRequest extends FormRequest
             'serial_number.unique' => 'Serial number already exists',
             'region_id.required' => 'Region ID is required',
             'office_id.required' => 'Office ID is required',
+            'device_key.regex' => 'The device key must be exactly 10 characters: uppercase letters and numbers only.',
+            'device_key.size' => 'The device key must be exactly 10 characters.',
         ];
     }
 }
