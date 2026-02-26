@@ -38,6 +38,7 @@ class IctmsAccessService
 
     /**
      * POST /api/assign-role - assign role(s) to user(s).
+     * Each user is found or created from HRP (HRPD) if they do not exist; then the role is assigned.
      */
     public function assignRole(array $payload): void
     {
@@ -50,6 +51,24 @@ class IctmsAccessService
                 throw $e;
             }
         }
+    }
+
+    /**
+     * Find or create user from HRP by PFNO. Returns user info for UI (e.g. before assigning role).
+     */
+    public function getOrEnsureUserByPfno(string $pfno, ?int $createdByUserId = null): array
+    {
+        $pfno = trim($pfno);
+        if ($pfno === '') {
+            return ['pfno' => '', 'fullname' => '', 'created' => false];
+        }
+        $user = $this->repository->getOrCreateUserByPfno($pfno, $createdByUserId);
+        $created = (bool) $user->wasRecentlyCreated;
+        return [
+            'pfno' => $user->user_id,
+            'fullname' => $user->name ?? 'Unknown',
+            'created' => $created,
+        ];
     }
 
     /**

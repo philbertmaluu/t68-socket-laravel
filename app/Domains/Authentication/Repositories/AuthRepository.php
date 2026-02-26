@@ -426,11 +426,12 @@ class AuthRepository
     }
 
     /**
-     * Resolve creator PFNO to internal user id (optional for created_by).
+     * Resolve creator PFNO (or internal user id) to internal user id for created_by.
+     * Accepts int or string so request payload CREATED_BY can be PFNO.
      */
-    public function resolveCreatedBy(?int $pfnoOrUserId): ?int
+    public function resolveCreatedBy(int|string|null $pfnoOrUserId): ?int
     {
-        if ($pfnoOrUserId === null) {
+        if ($pfnoOrUserId === null || $pfnoOrUserId === '') {
             return null;
         }
         $user = User::withoutTenant()->where('user_id', (string) $pfnoOrUserId)->first();
@@ -442,6 +443,7 @@ class AuthRepository
 
     /**
      * Assign role to user (ICTMS assign-role payload item).
+     * Finds or creates the user from HRP (getOrCreateUserByPfno) if they do not exist.
      */
     public function assignRoleToUser(array $item): void
     {
@@ -451,7 +453,7 @@ class AuthRepository
         $toDate = $item['TO_DATE'] ?? $item['to_date'] ?? null;
         $createdByPfno = $item['CREATED_BY'] ?? null;
 
-        if (!$pfno || !$roleId) {
+        if ($pfno === '' || !$roleId) {
             return;
         }
 

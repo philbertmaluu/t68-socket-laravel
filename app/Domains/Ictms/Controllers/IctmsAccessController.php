@@ -67,7 +67,24 @@ class IctmsAccessController
     }
 
     /**
+     * GET /api/user/by-pfno?pfno= - Find or create user from HRP by PFNO (for UI before assign-role).
+     */
+    public function userByPfno(Request $request): JsonResponse
+    {
+        if (!config('services.ictms.access_enabled', true)) {
+            return $this->error('ICTMS access integration is disabled', 403);
+        }
+        $pfno = $request->query('pfno');
+        if ($pfno === null || trim((string) $pfno) === '') {
+            return $this->error('pfno is required', 400);
+        }
+        $data = $this->service->getOrEnsureUserByPfno(trim((string) $pfno));
+        return $this->success($data, $data['created'] ? 'User created from HRP' : 'User found');
+    }
+
+    /**
      * POST /api/assign-role - Assign role(s) to user(s).
+     * Users are found or created from HRP if they do not exist.
      */
     public function assignRole(Request $request): JsonResponse
     {
