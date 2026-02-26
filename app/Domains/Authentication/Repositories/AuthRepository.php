@@ -3,6 +3,7 @@
 namespace App\Domains\Authentication\Repositories;
 
 use App\Domains\Authentication\Models\User;
+use App\Domains\Authentication\Models\UserRole;
 use Illuminate\Support\Facades\DB;
 
 class AuthRepository
@@ -280,5 +281,217 @@ class AuthRepository
             WHERE TO_DATE(TO_CHAR(TDATE, 'DD/MM/RRRR'), 'DD/MM/RRRR') >= TO_DATE(TO_CHAR(SYSDATE, 'DD/MM/RRRR'), 'DD/MM/RRRR')
               AND E.PFNO = ?
         ", [$userId]);
+    }
+
+    /**
+     * Get roles for a module (ICTMS format: role_id, role).
+     */
+    public function getRolesByModuleId(int $moduleId): \Illuminate\Support\Collection
+    {
+        return DB::table('roles as r')
+            ->join('modules as m', 'm.id', '=', 'r.module_id')
+            ->where('r.module_id', $moduleId)
+            ->whereNull('r.deleted_at')
+            ->select('r.id as role_id', 'r.role_name as role')
+            ->orderBy('r.role_name')
+            ->get();
+    }
+
+    /**
+     * Get all users grouped by module for ICTMS GET /api/user/roles.
+     * Returns structure: data[][ data: [ { module, user: [ { id, pfno, fullname, role, from, to, module } ] } ] ]
+     */
+    public function getUsersGroupedByModuleForIctms(): array
+    {
+        $rows = DB::table('user_roles as ur')
+            ->join('users as u', 'u.id', '=', 'ur.user_id')
+            ->join('roles as r', 'r.id', '=', 'ur.role_id')
+            ->join('modules as m', 'm.id', '=', 'r.module_id')
+            ->whereNull('ur.deleted_at')
+            ->where('ur.status', 'active')
+            ->where(function ($q) {
+                $q->whereNull('ur.end_date')->orWhere('ur.end_date', '>=', now());
+            })
+            ->where('ur.start_date', '<=', now())
+            ->select(
+                'ur.id',
+                'u.user_id as pfno',
+                'u.name as fullname',
+                'r.role_name as role',
+                'ur.start_date',
+                'ur.end_date',
+                'm.name as module_name'
+            )
+            ->orderBy('m.name')
+            ->orderBy('u.name')
+            ->get();
+
+        $byModule = $rows->groupBy('module_name');
+        $data = [];
+        foreach ($byModule as $moduleName => $userRows) {
+            $data[] = [
+                'data' => [
+                    [
+                        'module' => $moduleName,
+                        'user' => $userRows->map(fn ($row) => [
+                            'id' => (string) $row->id,
+                            'pfno' => (string) $row->pfno,
+                            'fullname' => $row->fullname ?? 'Unknown',
+                            'role' => $row->role,
+                            'from' => $row->start_date ? \Carbon\Carbon::parse($row->start_date)->format('d-M-y') : '',
+                            'to' => $row->end_date ? \Carbon\Carbon::parse($row->end_date)->format('d-M-y') : '',
+                            'module' => $moduleName,
+                        ])->values()->all(),
+                    ],
+                ],
+            ];
+        }
+        return $data;
+    }
+
+    /**
+     * Get all roles for one user in ICTMS format (POST /api/module/users).
+     */
+    public function getUserRolesIctmsFormat(string $pfno): array
+    {
+        $user = User::withoutTenant()->where('user_id', $pfno)->first();
+        if (!$user) {
+            return [];
+        }
+
+        $rows = DB::table('user_roles as ur')
+            ->join('users as u', 'u.id', '=', 'ur.user_id')
+            ->join('roles as r', 'r.id', '=', 'ur.role_id')
+            ->join('modules as m', 'm.id', '=', 'r.module_id')
+            ->where('ur.user_id', $user->id)
+            ->whereNull('ur.deleted_at')
+            ->where(function ($q) {
+                $q->whereNull('ur.end_date')->orWhere('ur.end_date', '>=', now());
+            })
+            ->where('ur.start_date', '<=', now())
+            ->select(
+                'ur.id',
+                'u.user_id as pfno',
+                'u.name as fullname',
+                'm.name as module_name',
+                'r.id as role_id',
+                'r.role_name as role',
+                'ur.start_date as from_date',
+                'ur.end_date as to_date'
+            )
+            ->get();
+
+        return $rows->map(fn ($row) => [
+            'id' => (string) $row->id,
+            'pfno' => (string) $row->pfno,
+            'fullname' => $row->fullname ?? 'Unknown',
+            'module_name' => $row->module_name,
+            'role_id' => (string) $row->role_id,
+            'role' => $row->role,
+            'from_date' => $row->from_date ? \Carbon\Carbon::parse($row->from_date)->format('d-M-Y') : '',
+            'to_date' => $row->to_date ? \Carbon\Carbon::parse($row->to_date)->format('d-M-Y') : '',
+        ])->all();
+    }
+
+    /**
+     * Ensure user exists for PFNO; create minimal user if not (name from HRPD or "Unknown").
+     */
+    public function getOrCreateUserByPfno(string $pfno, ?int $createdByUserId = null): User
+    {
+        $user = User::withoutTenant()->where('user_id', $pfno)->first();
+        if ($user) {
+            return $user;
+        }
+
+        $name = 'Unknown';
+        try {
+            $employee = $this->getEmployeeByPfno($pfno);
+            if ($employee) {
+                $name = trim(($employee->fname ?? '') . ' ' . ($employee->mname ?? '') . ' ' . ($employee->sname ?? '')) ?: 'Unknown';
+            }
+        } catch (\Throwable $e) {
+            // HRPD may be unavailable; use Unknown
+        }
+
+        return $this->createUser([
+            'tenant_id' => 1,
+            'user_id' => $pfno,
+            'user_type' => 'staff',
+            'name' => $name,
+            'email' => 'pfno' . $pfno . '@nssf.local',
+            'password' => bcrypt($pfno),
+            'is_active' => true,
+            'created_by' => $createdByUserId,
+        ]);
+    }
+
+    /**
+     * Resolve creator PFNO to internal user id (optional for created_by).
+     */
+    public function resolveCreatedBy(?int $pfnoOrUserId): ?int
+    {
+        if ($pfnoOrUserId === null) {
+            return null;
+        }
+        $user = User::withoutTenant()->where('user_id', (string) $pfnoOrUserId)->first();
+        if ($user) {
+            return (int) $user->id;
+        }
+        return null;
+    }
+
+    /**
+     * Assign role to user (ICTMS assign-role payload item).
+     */
+    public function assignRoleToUser(array $item): void
+    {
+        $pfno = (string) ($item['PFNO'] ?? $item['pfno'] ?? '');
+        $roleId = (int) ($item['ROLE_ID'] ?? $item['role_id'] ?? 0);
+        $fromDate = $item['FROM_DATE'] ?? $item['from_date'] ?? now()->format('Y-m-d');
+        $toDate = $item['TO_DATE'] ?? $item['to_date'] ?? null;
+        $createdByPfno = $item['CREATED_BY'] ?? null;
+
+        if (!$pfno || !$roleId) {
+            return;
+        }
+
+        $createdByUserId = $this->resolveCreatedBy($createdByPfno);
+        $user = $this->getOrCreateUserByPfno($pfno, $createdByUserId);
+
+        $from = \Carbon\Carbon::parse($fromDate)->startOfDay();
+        $to = $toDate ? \Carbon\Carbon::parse($toDate)->endOfDay() : null;
+
+        UserRole::create([
+            'user_id' => $user->id,
+            'role_id' => $roleId,
+            'start_date' => $from,
+            'end_date' => $to,
+            'status' => 'active',
+            'created_by' => $createdByUserId,
+        ]);
+    }
+
+    /**
+     * Revoke a role from a user (set status to inactive).
+     */
+    public function revokeUserRole(string $pfno, string $roleId, ?string $updatedBy = null): bool
+    {
+        $user = User::withoutTenant()->where('user_id', $pfno)->first();
+        if (!$user) {
+            return false;
+        }
+
+        $updatedByUserId = $updatedBy !== null ? $this->resolveCreatedBy((int) $updatedBy) : null;
+
+        $affected = UserRole::withoutTenant()
+            ->where('user_id', $user->id)
+            ->where('role_id', (int) $roleId)
+            ->where('status', 'active')
+            ->update([
+                'status' => 'inactive',
+                'updated_by' => $updatedByUserId,
+            ]);
+
+        return $affected > 0;
     }
 }

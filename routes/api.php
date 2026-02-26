@@ -1,8 +1,22 @@
 <?php
 
 use App\Domains\Device\Controllers\DeviceAuthController;
+use App\Domains\Ictms\Controllers\IctmsAccessController;
+use App\Domains\Ictms\Controllers\IctmsMonitoringController;
 use App\Domains\Service\Controllers\PublicServiceController;
 use Illuminate\Support\Facades\Route;
+
+// ICTMS Access Management (called by ICTMS server; no auth)
+Route::get('modules', [IctmsAccessController::class, 'modules']);
+Route::post('module/roles', [IctmsAccessController::class, 'moduleRoles']);
+Route::post('assign-role', [IctmsAccessController::class, 'assignRole']);
+Route::get('user/roles', [IctmsAccessController::class, 'userRoles']);
+Route::post('module/users', [IctmsAccessController::class, 'moduleUsers']);
+Route::post('access/revoke', [IctmsAccessController::class, 'revokeAccess']);
+
+// ICTMS System Monitoring
+Route::get('ictms/service', [IctmsMonitoringController::class, 'service']);
+Route::get('ictms/interface', [IctmsMonitoringController::class, 'interface']);
 
 // Authentication routes (public)
 require app_path('Domains/Authentication/routes.php');
