@@ -54,16 +54,20 @@ class IctmsRegisterCommand extends Command
 
         $accessToken = $this->option('token');
         if ($accessToken === null || $accessToken === '') {
-            $this->line('ICTMS may require an access token to register.');
-            $accessToken = $this->secret('Enter ICTMS access token (or leave empty if not required)') ?? '';
+            $accessToken = $this->secret('Enter ICTMS access token (required):') ?? '';
         }
-        $accessToken = (string) $accessToken;
+        $accessToken = trim((string) $accessToken);
 
-        $headers = array_filter([
+        if ($accessToken === '') {
+            $this->error('Access token is required. Run with --token=YOUR_TOKEN or enter it when prompted.');
+            return Command::FAILURE;
+        }
+
+        $headers = [
             'Accept' => 'application/json',
             'Content-Type' => 'application/json',
-            'Authorization' => $accessToken !== '' ? 'Bearer ' . $accessToken : null,
-        ]);
+            'Authorization' => 'Bearer ' . $accessToken,
+        ];
 
         $accessUrl = $ictmsApiBase . '/api/access/add-software-access';
         $this->info("POST {$accessUrl}");
