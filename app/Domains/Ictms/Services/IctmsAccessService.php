@@ -94,4 +94,57 @@ class IctmsAccessService
     {
         return $this->repository->revokeUserRole($pfno, $roleId, $updatedBy);
     }
+
+    /**
+     * Assign multiple roles to a user (QMS UI). Does not modify assign-role used by other systems.
+     * Accepts either:
+     * - An array of items: [ { PFNO, ROLE_ID, FROM_DATE?, TO_DATE?, CREATED_BY? }, ... ]
+     * - A single object with ROLE_IDS: { PFNO, ROLE_IDS: [id, ...], FROM_DATE?, TO_DATE?, CREATED_BY? }
+     * Each user is found or created from HRP if they do not exist; then each role is assigned.
+     */
+    public function assignRolesToUser(array $payload): void
+    {
+        $items = $this->expandAssignRolesPayload($payload);
+        foreach ($items as $item) {
+            try {
+                $this->repository->assignRoleToUser($item);
+            } catch (\Throwable $e) {
+                Log::warning('assign-roles item failed', ['item' => $item, 'error' => $e->getMessage()]);
+                throw $e;
+            }
+        }
+    }
+
+    /**
+     * Expand assign-roles payload to a flat array of items (each with PFNO, ROLE_ID, FROM_DATE, TO_DATE, CREATED_BY).
+     */
+    private function expandAssignRolesPayload(array $payload): array
+    {
+        $roleIds = $payload['ROLE_IDS'] ?? $payload['role_ids'] ?? null;
+        if (is_array($roleIds) && count($roleIds) > 0) {
+            $pfno = $payload['PFNO'] ?? $payload['pfno'] ?? null;
+            if ($pfno === null || $pfno === '') {
+                return [];
+            }
+            $fromDate = $payload['FROM_DATE'] ?? $payload['from_date'] ?? now()->format('Y-m-d');
+            $toDate = $payload['TO_DATE'] ?? $payload['to_date'] ?? null;
+            $createdBy = $payload['CREATED_BY'] ?? $payload['created_by'] ?? null;
+            $items = [];
+            foreach ($roleIds as $roleId) {
+                $items[] = [
+                    'PFNO' => $pfno,
+                    'ROLE_ID' => (int) $roleId,
+                    'FROM_DATE' => $fromDate,
+                    'TO_DATE' => $toDate,
+                    'CREATED_BY' => $createdBy,
+                ];
+            }
+            return $items;
+        }
+
+        if (isset($payload[0]) && is_array($payload[0])) {
+            return $payload;
+        }
+        return [$payload];
+    }
 }

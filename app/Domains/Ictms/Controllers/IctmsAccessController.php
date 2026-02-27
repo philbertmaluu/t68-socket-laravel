@@ -83,7 +83,7 @@ class IctmsAccessController
     }
 
     /**
-     * POST /api/assign-role - Assign role(s) to user(s).
+     * POST /api/assign-role - Assign role(s) to user(s). Used by ICTMS and other systems; do not change.
      * Users are found or created from HRP if they do not exist.
      */
     public function assignRole(Request $request): JsonResponse
@@ -98,6 +98,26 @@ class IctmsAccessController
         try {
             $this->service->assignRole($payload);
             return $this->success([], 'Role assigned successfully');
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage(), 422);
+        }
+    }
+
+    /**
+     * POST /api/assign-roles - Assign multiple roles to user(s). For QMS UI; accepts ROLE_IDS or array of items.
+     */
+    public function assignRoles(Request $request): JsonResponse
+    {
+        if (!config('services.ictms.access_enabled', true)) {
+            return $this->error('ICTMS access integration is disabled', 403);
+        }
+        $payload = $request->all();
+        if (empty($payload)) {
+            return $this->error('Payload is required', 400);
+        }
+        try {
+            $this->service->assignRolesToUser($payload);
+            return $this->success([], 'Roles assigned successfully');
         } catch (\Throwable $e) {
             return $this->error($e->getMessage(), 422);
         }

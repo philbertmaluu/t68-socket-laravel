@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('modules', [IctmsAccessController::class, 'modules']);
 Route::post('module/roles', [IctmsAccessController::class, 'moduleRoles']);
 Route::post('assign-role', [IctmsAccessController::class, 'assignRole']);
+Route::post('assign-roles', [IctmsAccessController::class, 'assignRoles']);
 Route::get('user/roles', [IctmsAccessController::class, 'userRoles']);
 Route::get('user/by-pfno', [IctmsAccessController::class, 'userByPfno']);
 Route::post('module/users', [IctmsAccessController::class, 'moduleUsers']);
