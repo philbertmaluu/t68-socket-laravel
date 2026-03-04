@@ -147,8 +147,8 @@ class NotificationService
 
         $message = "Ndugu {$memberName},\n";
         $message .= "Tiketi yako namba {$ticketNumber} imeundwa kwa ajili ya huduma ya {$serviceType}.\n";
-        $message .= "Tafadhali subiri kuitwa kwenye counter.\n";
-        $message .= "Asante - NSSF";
+        $message .= "Tafadhali subiri kuitwa ili kupokea huduma.\n";
+        $message .= "Asante";
 
         return $this->sendSms(
             recipient: $ticket->phone_number,
@@ -156,6 +156,8 @@ class NotificationService
             process: 'TICKET CREATED',
             expiryHours: 4
         );
+
+        
     }
 
     /**
