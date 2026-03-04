@@ -21,6 +21,7 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             UserRoleSeeder::class,
             ServiceSeeder::class,
+            NotificationTemplateEnSeeder::class,
         ]);
     }
 }
