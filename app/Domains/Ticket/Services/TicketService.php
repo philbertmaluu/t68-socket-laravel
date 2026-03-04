@@ -103,12 +103,14 @@ class TicketService
 
     /**
      * Find or create a queue for a service and office.
-     * 
+     *
+     * Counters are linked to services via counter_services pivot (no service_id on counters).
+     *
      * Logic:
-     * 1. Find a counter that can serve this service (counter.service_id = service_id)
+     * 1. Find a counter that can serve this service (via counter_services pivot)
      * 2. If no counter found for this service, find any active counter in the office
      * 3. Get or create queue for that counter (1:1 relationship)
-     * 
+     *
      * @param string $serviceId
      * @param string $officeId
      * @return string Queue ID
@@ -119,15 +121,14 @@ class TicketService
         // Convert to string to ensure type consistency with database
         $serviceId = (string) $serviceId;
         $officeId = (string) $officeId;
-        
-        // Step 1: Try to find a counter that can serve this service
-        $counter = Counter::where('service_id', $serviceId)
+
+        // Step 1: Find a counter that can serve this service (via counter_services pivot)
+        $counter = Counter::forService($serviceId)
             ->where('office_id', $officeId)
             ->where('status', 'ACTIVE')
             ->first();
-        
+
         // Step 2: If no counter found for this service, find any active counter in the office
-        // (since one counter can serve multiple services)
         if (!$counter) {
             $counter = Counter::where('office_id', $officeId)
                 ->where('status', 'ACTIVE')
