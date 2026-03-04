@@ -149,10 +149,11 @@ class TicketService
         }
         
         // Create new queue for this counter (ID will be auto-generated)
+        // Queues.status has an Oracle CHECK constraint: ('BUSY', 'NORMAL', 'CRITICAL', 'FREE')
         $queueId = DB::table('queues')->insertGetId([
             'counter_id' => $counter->id,
             'name' => $counter->name . ' Queue',
-            'status' => 'Normal', // Enum: 'Busy', 'Normal', 'Critical', 'Free'
+            'status' => 'NORMAL',
             'members_waiting' => 1,
             'members_being_served' => 0,
             'average_wait_time' => 0,
