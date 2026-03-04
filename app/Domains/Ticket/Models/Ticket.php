@@ -43,6 +43,7 @@ class Ticket extends Model
         'duration_seconds',
         'transferred_to_counter_id',
         'office_id',
+        'locale',
         'queue_position',
         'created_by',
         'updated_by',

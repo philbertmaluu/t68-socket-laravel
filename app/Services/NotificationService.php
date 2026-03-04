@@ -3,12 +3,18 @@
 namespace App\Services;
 
 use App\Domains\Ticket\Models\Ticket;
+use App\Domains\Notification\Services\NotificationTemplateService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Exception;
 
 class NotificationService
 {
+    public function __construct(
+        private NotificationTemplateService $notificationTemplateService
+    ) {
+    }
+
     /**
      * Send SMS notification via ICTMS API
      *
@@ -145,10 +151,34 @@ class NotificationService
         $ticketNumber = $ticket->ticket_number;
         $serviceType = $ticket->service_type;
 
-        $message = "Ndugu {$memberName},\n";
-        $message .= "Tiketi yako namba {$ticketNumber} imeundwa kwa ajili ya huduma ya {$serviceType}.\n";
-        $message .= "Tafadhali subiri kuitwa ili kupokea huduma.\n";
-        $message .= "Asante";
+        // Try to load customizable template; locale is passed from desktop and stored on the ticket
+        $locale = $ticket->locale ?: null;
+        $template = $this->notificationTemplateService->findActiveByKeyAndLocale(
+            'ticket_created_sms',
+            is_string($locale) ? $locale : null,
+            'sms'
+        );
+
+        if (!$template) {
+            Log::warning('Skipping ticket created SMS: No active ticket_created_sms template found', [
+                'ticket_number' => $ticketNumber,
+                'locale' => $locale,
+            ]);
+            return [
+                'success' => false,
+                'message' => 'No ticket_created_sms template configured',
+                'data' => null,
+            ];
+        }
+
+        $message = $this->renderTemplate(
+            $template->body,
+            [
+                'memberName' => $memberName,
+                'ticketNumber' => $ticketNumber,
+                'serviceType' => $serviceType,
+            ]
+        );
 
         return $this->sendSms(
             recipient: $ticket->phone_number,
@@ -156,8 +186,6 @@ class NotificationService
             process: 'TICKET CREATED',
             expiryHours: 4
         );
-
-        
     }
 
     /**
@@ -200,5 +228,17 @@ class NotificationService
             process: 'TICKET COMPLETED',
             expiryHours: 4
         );
+    }
+
+    /**
+     * Very small helper to replace {placeholders} in template bodies.
+     */
+    private function renderTemplate(string $body, array $variables): string
+    {
+        $replacements = [];
+        foreach ($variables as $key => $value) {
+            $replacements['{' . $key . '}'] = (string) $value;
+        }
+        return strtr($body, $replacements);
     }
 }

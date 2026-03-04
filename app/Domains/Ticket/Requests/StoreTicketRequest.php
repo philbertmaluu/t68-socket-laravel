@@ -20,6 +20,7 @@ class StoreTicketRequest extends FormRequest
             'service_type_id' => ['required', 'string', 'max:50', 'exists:services,id'],
             'phone_number' => ['required', 'string', 'max:20'],
             'office_id' => ['required', 'string', 'max:50'],
+            'locale' => ['required', 'string', 'max:10'],
         ];
     }
 
@@ -30,6 +31,7 @@ class StoreTicketRequest extends FormRequest
             'service_type_id.exists' => 'The selected service type does not exist',
             'phone_number.required' => 'Phone number is required',
             'office_id.required' => 'Office ID is required',
+            'locale.required' => 'Locale is required',
         ];
     }
 

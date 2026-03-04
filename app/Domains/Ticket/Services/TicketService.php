@@ -97,6 +97,7 @@ class TicketService
                 'queue_id' => $queueId,
                 'phone_number' => $data['phone_number'],
                 'office_id' => $data['office_id'],
+                'locale' => $data['locale'] ?? null,
                 'estimated_time' => $service->estimated_time,
                 'status' => 'waiting',
                 'priority' => false,
