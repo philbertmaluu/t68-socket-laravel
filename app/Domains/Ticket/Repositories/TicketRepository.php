@@ -4,6 +4,7 @@ namespace App\Domains\Ticket\Repositories;
 
 use App\Domains\Ticket\Models\Ticket;
 use App\Shared\Helpers\PaginationHelper;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 
 class TicketRepository
@@ -69,6 +70,22 @@ class TicketRepository
         }
         
         return $query->first();
+    }
+
+    /**
+     * Find a ticket created in the last N seconds with the same phone_number, service_id and office_id.
+     * Used to avoid duplicate tickets (and duplicate SMS) when the same request is sent twice (e.g. double submit).
+     */
+    public function findRecentDuplicate(string $phoneNumber, string $serviceTypeId, string $officeId, int $withinSeconds = 30): ?Ticket
+    {
+        $since = Carbon::now()->subSeconds($withinSeconds);
+        return Ticket::query()
+            ->where('phone_number', $phoneNumber)
+            ->where('service_id', $serviceTypeId)
+            ->where('office_id', $officeId)
+            ->where('created_at', '>=', $since)
+            ->orderByDesc('created_at')
+            ->first();
     }
 
     public function create(array $data): Ticket

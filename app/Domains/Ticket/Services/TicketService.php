@@ -63,6 +63,17 @@ class TicketService
     public function createTicket(array $data): Ticket
     {
         return TransactionHelper::execute(function () use ($data) {
+            // Idempotency: if the same request (phone + service + office) was created in the last 30 seconds, return that ticket (one ticket = one SMS).
+            $existing = $this->repository->findRecentDuplicate(
+                $data['phone_number'],
+                (string) $data['service_type_id'],
+                (string) $data['office_id'],
+                30
+            );
+            if ($existing !== null) {
+                return $existing;
+            }
+
             // Get service information
             $service = $this->serviceService->findById($data['service_type_id']);
             
