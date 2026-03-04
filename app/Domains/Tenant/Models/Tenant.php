@@ -9,7 +9,6 @@ use App\Domains\Service\Models\Service;
 use App\Domains\Service\ServiceDocument\Models\ServiceDocument;
 use App\Domains\Ticket\Models\Ticket;
 use App\Shared\Traits\Auditable;
-use App\Shared\Traits\HasTenant;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -17,7 +16,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Tenant extends Model
 {
-    use HasFactory, HasTenant, SoftDeletes, Auditable;
+    use HasFactory, SoftDeletes, Auditable;
 
     protected $table = 'tenants';
     protected $primaryKey = 'id';
