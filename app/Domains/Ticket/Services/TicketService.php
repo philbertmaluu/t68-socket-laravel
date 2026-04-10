@@ -174,107 +174,157 @@ class TicketService
             'updated_at' => now(),
         ]);
         
-        Log::info('Created new queue for counter', [
-            'queue_id' => $queueId,
-            'counter_id' => $counter->id,
-            'counter_name' => $counter->name,
-            'office_id' => $officeId,
-        ]);
-        
         return (string) $queueId; // Convert to string for consistency
     }
 
+    /** @var int Max numeric suffix per letter block (matches voice assets A–Z and 1–500). */
+    private const TICKET_NUM_MAX = 500;
+
     /**
      * Generate a unique ticket number.
-     * 
-     * Format: {LETTER}{3-DIGIT-NUMBER} (4 characters total)
-     * Examples: A001, A002, ..., A999, B001, B002, ..., Z999
-     * 
-     * Pattern:
-     * - Starts with A001, increments to A999 (999 tickets)
-     * - Then B001 to B999 (999 tickets)
-     * - Continues through Z001 to Z999 (999 tickets)
-     * - Total capacity: 26 letters × 999 numbers = 25,974 unique tickets
-     * 
-     * Duration Estimate:
-     * - At 100 tickets/day: ~260 days (8.5 months)
-     * - At 200 tickets/day: ~130 days (4.3 months)
-     * - At 500 tickets/day: ~52 days (1.7 months)
-     * - At 1000 tickets/day: ~26 days
-     * 
-     * After Z999, the system will check for the oldest unused ticket number
-     * starting from A001 and reuse it (ensuring no active tickets have that number).
-     * 
-     * @param string $officeId (not used in new format, kept for compatibility)
-     * @return string
+     *
+     * Format: one or more letters [A–Z] + digits 1–500 (unpadded), e.g. A1, A500, Z500, AA1, ZZ500, AAA1, …
+     * Sequence: A1…A500, B1…B500, …, Z500, then AA1…AA500, …, ZZ500, then AAA1, … (unbounded prefix length).
+     *
+     * String sorting does not match sequence order, so the greatest ticket is found by parsing all numbers.
+     * At very high volume consider a dedicated sequence column to avoid scanning ticket_number.
+     *
+     * @param string $officeId (reserved for future per-office sequences)
      */
     private function generateTicketNumber(string $officeId): string
     {
-        // Get the last ticket number in the system
-        $lastTicket = Ticket::orderBy('ticket_number', 'desc')
-            ->first();
+        $max = $this->findGreatestTicketNumber();
 
-        if (!$lastTicket || !$lastTicket->ticket_number) {
-            // First ticket ever
-            return 'A001';
+        if ($max === null) {
+            return 'A1';
         }
 
-        $lastNumber = $lastTicket->ticket_number;
+        $parsed = $this->parseTicketNumber($max);
+        if ($parsed === null) {
+            Log::warning("Could not parse greatest ticket number '{$max}'. Falling back to gap fill from A1.");
 
-        // Extract letter and number from last ticket (format: A001)
-        if (preg_match('/^([A-Z])(\d{3})$/', $lastNumber, $matches)) {
-            $lastLetter = $matches[1];
-            $lastNum = (int) $matches[2];
-
-            // If we haven't reached 999 for this letter, increment number
-            if ($lastNum < 999) {
-                $newNum = $lastNum + 1;
-                return $lastLetter . str_pad($newNum, 3, '0', STR_PAD_LEFT);
-            }
-
-            // If we've reached 999, move to next letter
-            if ($lastLetter < 'Z') {
-                $nextLetter = chr(ord($lastLetter) + 1);
-                return $nextLetter . '001';
-            }
-
-            // If we've reached Z999, find the oldest unused ticket number
-            // This handles the case where old tickets have been deleted/completed
             return $this->findNextAvailableTicketNumber();
         }
 
-        // If last ticket number doesn't match expected format, start fresh
-        Log::warning("Last ticket number '{$lastNumber}' doesn't match expected format (A001-Z999). Starting fresh from A001.");
-        return 'A001';
+        return $this->incrementTicketNumber($parsed['prefix'], $parsed['num']);
     }
 
     /**
-     * Find the next available ticket number when sequence reaches Z999.
-     * Checks for the oldest unused ticket number starting from A001.
-     * 
-     * @return string
+     * @return array{prefix: string, num: int}|null
      */
-    private function findNextAvailableTicketNumber(): string
+    private function parseTicketNumber(string $ticketNumber): ?array
     {
-        // Get all existing ticket numbers
-        $existingNumbers = Ticket::pluck('ticket_number')->toArray();
-        
-        // Generate all possible ticket numbers in order
-        for ($letter = 'A'; $letter <= 'Z'; $letter++) {
-            for ($num = 1; $num <= 999; $num++) {
-                $ticketNumber = $letter . str_pad($num, 3, '0', STR_PAD_LEFT);
-                
-                // If this number doesn't exist, use it
-                if (!in_array($ticketNumber, $existingNumbers)) {
-                    Log::info("Reusing ticket number {$ticketNumber} after reaching Z999.");
-                    return $ticketNumber;
-                }
+        if (!preg_match('/^([A-Z]+)(\d+)$/', $ticketNumber, $m)) {
+            return null;
+        }
+
+        $num = (int) $m[2];
+        if ($num < 1 || $num > self::TICKET_NUM_MAX) {
+            return null;
+        }
+
+        return ['prefix' => $m[1], 'num' => $num];
+    }
+
+    /**
+     * Order: A…Z (len 1), then AA…ZZ (len 2), then AAA…, comparing length then lexicographically.
+     *
+     * @return int -1 if a < b, 0 if equal, 1 if a > b
+     */
+    private function compareTicketSequence(string $prefixA, int $numA, string $prefixB, int $numB): int
+    {
+        $lenA = strlen($prefixA);
+        $lenB = strlen($prefixB);
+        if ($lenA !== $lenB) {
+            return $lenA <=> $lenB;
+        }
+
+        $cmp = strcmp($prefixA, $prefixB);
+        if ($cmp !== 0) {
+            return $cmp <=> 0;
+        }
+
+        return $numA <=> $numB;
+    }
+
+    private function findGreatestTicketNumber(): ?string
+    {
+        $best = null;
+        /** @var string|null $bestPrefix */
+        $bestPrefix = null;
+        $bestNum = 0;
+
+        foreach (Ticket::pluck('ticket_number') as $tn) {
+            $parsed = $this->parseTicketNumber($tn);
+            if ($parsed === null) {
+                continue;
+            }
+
+            if ($best === null
+                || $this->compareTicketSequence($parsed['prefix'], $parsed['num'], $bestPrefix, $bestNum) > 0) {
+                $best = $tn;
+                $bestPrefix = $parsed['prefix'];
+                $bestNum = $parsed['num'];
             }
         }
 
-        // If all numbers are taken (shouldn't happen in practice), log warning and return A001
-        Log::warning('All ticket numbers (A001-Z999) are in use. Resetting to A001. This may cause duplicates.');
-        return 'A001';
+        return $best;
+    }
+
+    private function incrementTicketNumber(string $prefix, int $num): string
+    {
+        if ($num < self::TICKET_NUM_MAX) {
+            return $prefix . (string) ($num + 1);
+        }
+
+        $nextPrefix = $this->nextPrefixInSequence($prefix);
+
+        return $nextPrefix . '1';
+    }
+
+    /**
+     * Next prefix after A, B, …, Z, AA, AB, …, AZ, BA, …, ZZ, AAA, …
+     */
+    private function nextPrefixInSequence(string $prefix): string
+    {
+        $len = strlen($prefix);
+        $chars = str_split($prefix);
+
+        for ($i = $len - 1; $i >= 0; $i--) {
+            if ($chars[$i] < 'Z') {
+                $chars[$i] = chr(ord($chars[$i]) + 1);
+                for ($j = $i + 1; $j < $len; $j++) {
+                    $chars[$j] = 'A';
+                }
+
+                return implode('', $chars);
+            }
+        }
+
+        return str_repeat('A', $len + 1);
+    }
+
+    /**
+     * When the numeric sequence is exhausted, find the smallest ticket not present (prefix order, then 1–500).
+     */
+    private function findNextAvailableTicketNumber(): string
+    {
+        $existing = array_flip(Ticket::pluck('ticket_number')->all());
+        $prefix = 'A';
+
+        for ($guard = 0; $guard < 100000; $guard++) {
+            for ($num = 1; $num <= self::TICKET_NUM_MAX; $num++) {
+                $candidate = $prefix . $num;
+                if (!isset($existing[$candidate])) {
+                    Log::info("Assigned next available ticket number {$candidate}.");
+
+                    return $candidate;
+                }
+            }
+            $prefix = $this->nextPrefixInSequence($prefix);
+        }
+
+        return 'A1';
     }
 
     public function updateTicket(Ticket $ticket, array $data): Ticket
