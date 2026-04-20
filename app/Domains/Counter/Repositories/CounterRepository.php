@@ -3,6 +3,8 @@
 namespace App\Domains\Counter\Repositories;
 
 use App\Domains\Counter\Models\Counter;
+use App\Domains\Counter\Models\CounterClerk;
+use App\Domains\Authentication\Models\User;
 use App\Shared\Helpers\PaginationHelper;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -45,7 +47,9 @@ class CounterRepository
             $query->onlyTrashed();
         }
 
-        return $query->get();
+        $items = $query->get();
+        $this->appendActiveClerkToCounters($items);
+        return $items;
     }
 
     public function create(array $data): Counter
@@ -128,11 +132,61 @@ class CounterRepository
 
         $total = $query->count();
         $items = $query->skip(($page - 1) * $perPage)->take($perPage)->get();
+        $this->appendActiveClerkToCounters($items);
         $meta = PaginationHelper::calculateMeta($total, $perPage, $page);
 
         return [
             'data' => $items,
             'meta' => $meta,
         ];
+    }
+
+    private function appendActiveClerkToCounters(Collection $counters): void
+    {
+        if ($counters->isEmpty()) {
+            return;
+        }
+
+        $counterIds = $counters->pluck('id')->map(fn ($id) => (string) $id)->values()->all();
+
+        $assignments = CounterClerk::query()
+            ->whereIn('counter_id', $counterIds)
+            ->where('is_active', true)
+            ->orderByDesc('assigned_at')
+            ->get()
+            ->groupBy(fn ($a) => (string) $a->counter_id)
+            ->map(fn ($group) => $group->first());
+
+        $clerkIds = $assignments
+            ->pluck('clerk_id')
+            ->filter()
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $users = User::query()
+            ->select(['id', 'user_id', 'name', 'email', 'user_type'])
+            ->whereIn('id', $clerkIds)
+            ->get()
+            ->keyBy(fn ($u) => (string) $u->id);
+
+        foreach ($counters as $counter) {
+            $assignment = $assignments->get((string) $counter->id);
+            if (!$assignment) {
+                $counter->setAttribute('clerk', null);
+                continue;
+            }
+
+            $user = $users->get((string) $assignment->clerk_id);
+            $counter->setAttribute('clerk', [
+                'id' => (string) $assignment->clerk_id,
+                'pfno' => $user?->user_id,
+                'name' => $user?->name,
+                'email' => $user?->email,
+                'department' => $user?->user_type,
+                'assigned_at' => $assignment->assigned_at?->toIso8601String(),
+            ]);
+        }
     }
 }

@@ -38,7 +38,7 @@ class CounterService
             $data['office_id'] = $data['office_id'] ?? '1';
             $counter = $this->repository->create($data);
             $this->syncCounterClerkAssignment($counter, $clerkId);
-            return $counter->fresh(['services']);
+            return $this->attachClerkPayload($counter->fresh(['services']));
         });
     }
 
@@ -56,7 +56,7 @@ class CounterService
             if ($clerkPayloadProvided) {
                 $this->syncCounterClerkAssignment($updatedCounter, $clerkId);
             }
-            return $updatedCounter->fresh(['services']);
+            return $this->attachClerkPayload($updatedCounter->fresh(['services']));
         });
     }
 
@@ -241,5 +241,34 @@ class CounterService
             'assigned_at' => now(),
             'unassigned_at' => null,
         ]);
+    }
+
+    private function attachClerkPayload(Counter $counter): Counter
+    {
+        $assignment = CounterClerk::query()
+            ->where('counter_id', (string) $counter->id)
+            ->where('is_active', true)
+            ->latest('assigned_at')
+            ->first();
+
+        if (!$assignment) {
+            $counter->setAttribute('clerk', null);
+            return $counter;
+        }
+
+        $user = User::query()
+            ->select(['id', 'user_id', 'name', 'email', 'user_type'])
+            ->find($assignment->clerk_id);
+
+        $counter->setAttribute('clerk', [
+            'id' => (string) $assignment->clerk_id,
+            'pfno' => $user?->user_id,
+            'name' => $user?->name,
+            'email' => $user?->email,
+            'department' => $user?->user_type,
+            'assigned_at' => $assignment->assigned_at?->toIso8601String(),
+        ]);
+
+        return $counter;
     }
 }
