@@ -106,7 +106,11 @@ class CounterController extends BaseController
                 return $this->sendError($message, [], 404);
             }
 
-            return $this->sendError('Failed to retrieve current user counter', ['error' => $message], 500);
+            if ($message === 'Your assigned counter is inactive. Please contact supervisor.') {
+                return $this->sendError($message, [], 422);
+            }
+
+            return $this->sendError('Unable to load counter assignment at the moment. Please try again later.', [], 500);
         }
     }
 }

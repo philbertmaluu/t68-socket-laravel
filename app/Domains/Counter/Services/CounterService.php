@@ -117,6 +117,10 @@ class CounterService
             throw new \Exception('Assigned counter not found');
         }
 
+        if (strtoupper((string) $counter->status) !== 'ACTIVE') {
+            throw new \Exception('Your assigned counter is inactive. Please contact supervisor.');
+        }
+
         return [
             'id' => $counter->id,
             'name' => $counter->name,
