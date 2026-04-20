@@ -4,6 +4,7 @@ namespace App\Domains\Counter\Services;
 
 use App\Domains\Counter\Models\Counter;
 use App\Domains\Counter\Models\CounterClerk;
+use App\Domains\Authentication\Models\User;
 use App\Domains\Counter\Repositories\CounterRepository;
 use App\Shared\Helpers\TransactionHelper;
 use Illuminate\Database\Eloquent\Collection;
@@ -65,6 +66,40 @@ class CounterService
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
         return $this->repository->paginate($perPage, $page, $filters);
+    }
+
+    /**
+     * List users that can be assigned as clerks.
+     *
+     * @return array<int, array{id: string, name: string, email: string, department: string}>
+     */
+    public function getClerks(?string $search = null, int $limit = 100): array
+    {
+        $limit = max(10, min(300, $limit));
+        $search = trim((string) $search);
+
+        $query = User::query()
+            ->select(['id', 'user_id', 'name', 'email', 'user_type', 'is_active'])
+            ->where('is_active', true);
+
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('user_id', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $users = $query->orderBy('name')->limit($limit)->get();
+
+        return $users->map(function (User $user) {
+            return [
+                'id' => (string) ($user->id ?? ''),
+                'name' => (string) ($user->name ?? ''),
+                'email' => (string) ($user->email ?? ''),
+                'department' => (string) ($user->user_type ?? 'General'),
+            ];
+        })->values()->all();
     }
 
     /**

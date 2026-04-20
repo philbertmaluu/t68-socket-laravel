@@ -33,6 +33,20 @@ class CounterController extends BaseController
         }
     }
 
+    public function getclerks(Request $request): JsonResponse
+    {
+        try {
+            $search = (string) $request->query('search', '');
+            $limit = (int) $request->query('limit', 100);
+
+            $clerks = $this->service->getClerks($search, $limit);
+
+            return $this->sendResponse($clerks, 'Clerks retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve clerks', [], 500);
+        }
+    }
+
     public function store(StoreCounterRequest $request): JsonResponse
     {
         try {
