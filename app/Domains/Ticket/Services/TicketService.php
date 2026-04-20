@@ -10,9 +10,12 @@ use App\Domains\Service\Services\ServiceService;
 use App\Domains\Ticket\Models\Ticket;
 use App\Domains\Ticket\Repositories\TicketRepository;
 use App\Shared\Helpers\TransactionHelper;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class TicketService
 {
@@ -215,7 +218,7 @@ class TicketService
         return TransactionHelper::execute(function () {
              $user = Auth::guard('sanctum')->user();
              if (!$user || !isset($user->id)) {
-                throw new \Exception('User not authenticated');
+                throw new AuthenticationException('User not authenticated');
              }
 
             $counterAssignment = CounterClerk::query()
@@ -225,7 +228,7 @@ class TicketService
                 ->first();
 
             if (!$counterAssignment) {
-                throw new \Exception('User not assigned to a counter');
+                throw new UnprocessableEntityHttpException('User not assigned to a counter');
             }
 
             $counter = Counter::query()
@@ -233,7 +236,7 @@ class TicketService
                 ->find($counterAssignment->counter_id);
 
             if (!$counter) {
-                throw new \Exception('Assigned counter not found');
+                throw new NotFoundHttpException('Assigned counter not found');
             }
 
             $queue = DB::table('queues')
@@ -241,7 +244,7 @@ class TicketService
                 ->first();
 
             if (!$queue) {
-                throw new \Exception('No queue found for assigned counter');
+                throw new NotFoundHttpException('No queue found for assigned counter');
             }
 
             $ticket = Ticket::query()
@@ -252,7 +255,7 @@ class TicketService
                 ->first();
 
             if (!$ticket) {
-                throw new \Exception('No waiting ticket found in queue');
+                throw new NotFoundHttpException('No waiting ticket found in queue');
             }
 
             $ticket->update([

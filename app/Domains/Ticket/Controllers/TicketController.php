@@ -6,8 +6,11 @@ use App\Domains\Ticket\Requests\StoreTicketRequest;
 use App\Domains\Ticket\Requests\UpdateTicketRequest;
 use App\Domains\Ticket\Services\TicketService;
 use App\Http\Controllers\BaseController;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class TicketController extends BaseController
 {
@@ -144,18 +147,14 @@ class TicketController extends BaseController
         try {
             $ticket = $this->service->callNextTicket();
             return $this->sendResponse($ticket, 'Ticket called successfully');
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
-            $message = $e->getMessage();
-            if ($message === 'No waiting ticket found in queue') {
-                return $this->sendError($message, [], 404);
-            }
-            if ($message === 'User not authenticated') {
-                return $this->sendError($message, [], 401);
-            }
-            if ($message === 'User not assigned to a counter') {
-                return $this->sendError($message, [], 422);
-            }
-            return $this->sendError('Failed to call next ticket', ['error' => $message], 500);
+            return $this->sendError('Failed to call next ticket', ['error' => $e->getMessage()], 500);
         }
     }
 }

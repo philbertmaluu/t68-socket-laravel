@@ -7,8 +7,11 @@ use App\Domains\Counter\Models\CounterClerk;
 use App\Domains\Authentication\Models\User;
 use App\Domains\Counter\Repositories\CounterRepository;
 use App\Shared\Helpers\TransactionHelper;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class CounterService
 {
@@ -131,7 +134,7 @@ class CounterService
     {
         $user = Auth::user();
         if (!$user) {
-            throw new \Exception('User not authenticated');
+            throw new AuthenticationException('User not authenticated');
         }
 
         $candidateClerkIds = array_values(array_filter([
@@ -142,7 +145,7 @@ class CounterService
         ]));
 
         if (count($candidateClerkIds) === 0) {
-            throw new \Exception('User identifier missing');
+            throw new UnprocessableEntityHttpException('User identifier missing');
         }
 
         $assignment = CounterClerk::query()
@@ -152,7 +155,7 @@ class CounterService
             ->first();
 
         if (!$assignment) {
-            throw new \Exception('User not assigned to any active counter');
+            throw new NotFoundHttpException('User not assigned to any active counter');
         }
 
         $counter = Counter::query()
@@ -160,11 +163,11 @@ class CounterService
             ->find($assignment->counter_id);
 
         if (!$counter) {
-            throw new \Exception('Assigned counter not found');
+            throw new NotFoundHttpException('Assigned counter not found');
         }
 
         if (strtoupper((string) $counter->status) !== 'ACTIVE') {
-            throw new \Exception('Your assigned counter is inactive. Please contact supervisor.');
+            throw new UnprocessableEntityHttpException('Your assigned counter is inactive. Please contact supervisor.');
         }
 
         return [
