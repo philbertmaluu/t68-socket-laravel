@@ -2,6 +2,7 @@
 
 namespace App\Domains\Ticket\Services;
 
+use App\Domains\Counter\Models\CounterClerk;
 use App\Domains\Counter\Models\Counter;
 use App\Domains\Counter\Services\CounterService;
 use App\Domains\Service\Models\Service;
@@ -11,6 +12,7 @@ use App\Domains\Ticket\Repositories\TicketRepository;
 use App\Shared\Helpers\TransactionHelper;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class TicketService
 {
@@ -204,6 +206,80 @@ class TicketService
         }
 
         return $this->incrementTicketNumber($parsed['prefix'], $parsed['num']);
+    }
+
+
+
+    public function callNextTicket(): array
+    {
+        return TransactionHelper::execute(function () {
+             $user = Auth::user();
+             if (!$user || !isset($user->id)) {
+                throw new \Exception('User not authenticated');
+             }
+
+            $counterAssignment = CounterClerk::query()
+                ->where('clerk_id', (string) $user->id)
+                ->where('is_active', true)
+                ->latest('assigned_at')
+                ->first();
+
+            if (!$counterAssignment) {
+                throw new \Exception('User not assigned to a counter');
+            }
+
+            $counter = Counter::query()
+                ->with('counterType')
+                ->find($counterAssignment->counter_id);
+
+            if (!$counter) {
+                throw new \Exception('Assigned counter not found');
+            }
+
+            $queue = DB::table('queues')
+                ->where('counter_id', $counter->id)
+                ->first();
+
+            if (!$queue) {
+                throw new \Exception('No queue found for assigned counter');
+            }
+
+            $ticket = Ticket::query()
+                ->where('queue_id', (string) $queue->id)
+                ->where('status', 'waiting')
+                ->orderBy('queue_position', 'asc')
+                ->orderBy('created_at', 'asc')
+                ->first();
+
+            if (!$ticket) {
+                throw new \Exception('No waiting ticket found in queue');
+            }
+
+            $ticket->update([
+                'status' => 'called',
+                'counter_id' => (string) $counter->id,
+                'clerk_id' => (string) $user->id,
+                'called_at' => now(),
+            ]);
+
+            $ticket = $ticket->fresh();
+
+            return [
+                'id' => $ticket->id,
+                'ticket_number' => $ticket->ticket_number,
+                'service_type' => $ticket->service_type,
+                'estimated_time' => $ticket->estimated_time,
+                'counter' => [
+                    'id' => $counter->id,
+                    'name' => $counter->name,
+                    'counter_type' => [
+                        'id' => $counter->counterType?->id,
+                        'name' => $counter->counterType?->name,
+                        'code' => $counter->counterType?->code,
+                    ],
+                ],
+            ];
+        });
     }
 
     /**

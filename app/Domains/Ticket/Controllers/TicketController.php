@@ -137,4 +137,23 @@ class TicketController extends BaseController
             return $this->sendError('Failed to delete ticket', ['error' => $e->getMessage()], 500);
         }
     }
+
+
+    public function callNextTicket(Request $request): JsonResponse
+    {
+        try {
+            $ticket = $this->service->callNextTicket();
+            return $this->sendResponse($ticket, 'Ticket called successfully');
+        } catch (\Exception $e) {
+            $message = $e->getMessage();
+            if ($message === 'No waiting ticket found in queue') {
+                return $this->sendError($message, [], 404);
+            }
+            if ($message === 'User not authenticated' || $message === 'User not assigned to a counter') {
+                return $this->sendError($message, [], 422);
+            }
+            return $this->sendError('Failed to call next ticket', ['error' => $message], 500);
+        }
+    }
 }
+
