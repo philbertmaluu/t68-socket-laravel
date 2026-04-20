@@ -149,7 +149,10 @@ class TicketController extends BaseController
             if ($message === 'No waiting ticket found in queue') {
                 return $this->sendError($message, [], 404);
             }
-            if ($message === 'User not authenticated' || $message === 'User not assigned to a counter') {
+            if ($message === 'User not authenticated') {
+                return $this->sendError($message, [], 401);
+            }
+            if ($message === 'User not assigned to a counter') {
                 return $this->sendError($message, [], 422);
             }
             return $this->sendError('Failed to call next ticket', ['error' => $message], 500);

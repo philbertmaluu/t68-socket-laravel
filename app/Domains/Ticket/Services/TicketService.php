@@ -213,7 +213,7 @@ class TicketService
     public function callNextTicket(): array
     {
         return TransactionHelper::execute(function () {
-             $user = Auth::user();
+             $user = Auth::guard('sanctum')->user();
              if (!$user || !isset($user->id)) {
                 throw new \Exception('User not authenticated');
              }
