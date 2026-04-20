@@ -89,4 +89,24 @@ class CounterController extends BaseController
             return $this->sendError('Failed to delete counter', ['error' => $e->getMessage()], 500);
         }
     }
+
+    public function myCounter(): JsonResponse
+    {
+        try {
+            $counter = $this->service->getCurrentUserCounter();
+            return $this->sendResponse($counter, 'Current user counter retrieved successfully');
+        } catch (\Exception $e) {
+            $message = $e->getMessage();
+
+            if ($message === 'User not authenticated') {
+                return $this->sendError($message, [], 401);
+            }
+
+            if ($message === 'User not assigned to any active counter' || $message === 'Assigned counter not found') {
+                return $this->sendError($message, [], 404);
+            }
+
+            return $this->sendError('Failed to retrieve current user counter', ['error' => $message], 500);
+        }
+    }
 }
