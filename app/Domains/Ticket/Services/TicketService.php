@@ -11,7 +11,6 @@ use App\Domains\Ticket\Repositories\TicketRepository;
 use App\Shared\Helpers\TransactionHelper;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class TicketService
 {
@@ -62,9 +61,6 @@ class TicketService
      */
     public function createTicket(array $data): Ticket
     {
-        Log::info('Creating ticket', [
-            'data' => $data,
-        ]);
 
         return TransactionHelper::execute(function () use ($data) {
             // Idempotency: if the same request (phone + service + office) was created in the last 30 seconds, return that ticket (one ticket = one SMS).
@@ -77,11 +73,6 @@ class TicketService
             if ($existing !== null) {
                 return $existing;
             }
-
-            Log::info('Existing ticket found', [
-                'existing' => $existing,
-            ]);
-
             // Get service information
             $service = $this->serviceService->findById($data['service_type_id']);
             
@@ -89,24 +80,12 @@ class TicketService
                 throw new \Exception("Service with ID {$data['service_type_id']} not found");
             }
 
-            Log::info('Service found', [
-                'service' => $service,
-            ]);
-
             // Find a counter that can serve this service (or any active counter in the office)
             // Then find or create queue for that counter
             $queueId = $this->findOrCreateQueueForService($data['service_type_id'], $data['office_id']);
 
-            Log::info('Queue found', [
-                'queue_id' => $queueId,
-            ]);
-
             // Generate ticket number
             $ticketNumber = $this->generateTicketNumber($data['office_id']);
-
-            Log::info('Ticket number generated', [
-                'ticket_number' => $ticketNumber,
-            ]);
 
             // Prepare ticket data
             // Note: tenant_id is automatically set by HasTenant trait if available
@@ -221,8 +200,6 @@ class TicketService
 
         $parsed = $this->parseTicketNumber($max);
         if ($parsed === null) {
-            Log::warning("Could not parse greatest ticket number '{$max}'. Falling back to gap fill from A1.");
-
             return $this->findNextAvailableTicketNumber();
         }
 
@@ -336,8 +313,6 @@ class TicketService
             for ($num = 1; $num <= self::TICKET_NUM_MAX; $num++) {
                 $candidate = $prefix . $num;
                 if (!isset($existing[$candidate])) {
-                    Log::info("Assigned next available ticket number {$candidate}.");
-
                     return $candidate;
                 }
             }
