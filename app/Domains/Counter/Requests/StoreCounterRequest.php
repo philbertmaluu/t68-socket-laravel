@@ -20,6 +20,7 @@ class StoreCounterRequest extends FormRequest
             'service_ids.*' => ['required', 'exists:services,id'],
             'status' => ['sometimes', 'string', 'in:ACTIVE,INACTIVE,MAINTENANCE'],
             'office_id' => ['sometimes', 'string', 'max:50'],
+            'clerk_id' => ['nullable', 'string', 'max:50'],
         ];
     }
 

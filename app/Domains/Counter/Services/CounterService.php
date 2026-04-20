@@ -33,8 +33,12 @@ class CounterService
     {
         return TransactionHelper::execute(function () use ($data) {
             // Hardcode office_id for now
+            $clerkId = $data['clerk_id'] ?? null;
+            unset($data['clerk_id']);
             $data['office_id'] = $data['office_id'] ?? '1';
-            return $this->repository->create($data);
+            $counter = $this->repository->create($data);
+            $this->syncCounterClerkAssignment($counter, $clerkId);
+            return $counter->fresh(['services']);
         });
     }
 
@@ -42,10 +46,17 @@ class CounterService
     {
         return TransactionHelper::execute(function () use ($counter, $data) {
             // Hardcode office_id for now if not provided
+            $clerkPayloadProvided = array_key_exists('clerk_id', $data);
+            $clerkId = $data['clerk_id'] ?? null;
+            unset($data['clerk_id']);
             if (!isset($data['office_id']) || empty($data['office_id'])) {
                 $data['office_id'] = '1';
             }
-            return $this->repository->update($counter, $data);
+            $updatedCounter = $this->repository->update($counter, $data);
+            if ($clerkPayloadProvided) {
+                $this->syncCounterClerkAssignment($updatedCounter, $clerkId);
+            }
+            return $updatedCounter->fresh(['services']);
         });
     }
 
@@ -172,5 +183,63 @@ class CounterService
                 'name' => $user->name ?? null,
             ],
         ];
+    }
+
+    private function syncCounterClerkAssignment(Counter $counter, ?string $clerkId): void
+    {
+        $normalizedClerkId = trim((string) $clerkId);
+
+        if ($normalizedClerkId === '') {
+            CounterClerk::query()
+                ->where('counter_id', (string) $counter->id)
+                ->where('is_active', true)
+                ->update([
+                    'is_active' => false,
+                    'unassigned_at' => now(),
+                ]);
+            return;
+        }
+
+        // A clerk should only have one active counter assignment.
+        CounterClerk::query()
+            ->where('clerk_id', $normalizedClerkId)
+            ->where('counter_id', '!=', (string) $counter->id)
+            ->where('is_active', true)
+            ->update([
+                'is_active' => false,
+                'unassigned_at' => now(),
+            ]);
+
+        // Counter should have one active clerk assignment.
+        CounterClerk::query()
+            ->where('counter_id', (string) $counter->id)
+            ->where('clerk_id', '!=', $normalizedClerkId)
+            ->where('is_active', true)
+            ->update([
+                'is_active' => false,
+                'unassigned_at' => now(),
+            ]);
+
+        $assignment = CounterClerk::query()
+            ->where('counter_id', (string) $counter->id)
+            ->where('clerk_id', $normalizedClerkId)
+            ->first();
+
+        if ($assignment) {
+            $assignment->update([
+                'is_active' => true,
+                'assigned_at' => now(),
+                'unassigned_at' => null,
+            ]);
+            return;
+        }
+
+        CounterClerk::query()->create([
+            'counter_id' => (string) $counter->id,
+            'clerk_id' => $normalizedClerkId,
+            'is_active' => true,
+            'assigned_at' => now(),
+            'unassigned_at' => null,
+        ]);
     }
 }
