@@ -34,7 +34,7 @@ class DashboardService
         $totalCustomersWaiting = (clone $ticketsQuery)->where('status', 'waiting')->count();
 
         $avgWaitTime = $this->calculateAverageWaitTimeMinutes(clone $ticketsQuery);
-        $counters = $this->buildSupervisorCounters(clone $countersQuery, clone $ticketsQuery);
+        $counters = $this->buildSupervisorCounters(clone $countersQuery, $officeId);
 
         return [
             'stats' => [
@@ -131,7 +131,7 @@ class DashboardService
         return (int) round($totalMinutes / $count);
     }
 
-    private function buildSupervisorCounters($countersQuery, $ticketsQuery): array
+    private function buildSupervisorCounters($countersQuery, ?string $officeId): array
     {
         $counters = $countersQuery
             ->with([
@@ -146,7 +146,12 @@ class DashboardService
 
         $counterIds = $counters->pluck('id')->map(fn ($id) => (string) $id)->values()->all();
 
-        $servedStats = $ticketsQuery
+        $servedStatsQuery = Ticket::query();
+        if ($officeId !== null && $officeId !== '') {
+            $servedStatsQuery->where('office_id', $officeId);
+        }
+
+        $servedStats = $servedStatsQuery
             ->whereIn('counter_id', $counterIds)
             ->where('status', 'completed')
             ->selectRaw('counter_id, COUNT(*) as served_count, AVG(duration_seconds) as avg_duration')
@@ -154,7 +159,12 @@ class DashboardService
             ->get()
             ->keyBy('counter_id');
 
-        $currentTickets = $ticketsQuery
+        $currentTicketsQuery = Ticket::query();
+        if ($officeId !== null && $officeId !== '') {
+            $currentTicketsQuery->where('office_id', $officeId);
+        }
+
+        $currentTickets = $currentTicketsQuery
             ->whereIn('counter_id', $counterIds)
             ->whereIn('status', ['called', 'serving'])
             ->orderByDesc('called_at')
