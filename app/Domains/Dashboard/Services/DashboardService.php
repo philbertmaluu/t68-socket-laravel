@@ -3,6 +3,7 @@
 namespace App\Domains\Dashboard\Services;
 
 use App\Domains\Counter\Models\Counter;
+use App\Domains\Authentication\Models\User;
 use App\Domains\Dashboard\Enums\Dashboard;
 use App\Domains\Ticket\Models\Ticket;
 use Illuminate\Auth\AuthenticationException;
@@ -33,6 +34,7 @@ class DashboardService
         $totalCustomersWaiting = (clone $ticketsQuery)->where('status', 'waiting')->count();
 
         $avgWaitTime = $this->calculateAverageWaitTimeMinutes(clone $ticketsQuery);
+        $counters = $this->buildSupervisorCounters(clone $countersQuery, clone $ticketsQuery);
 
         return [
             'stats' => [
@@ -43,7 +45,7 @@ class DashboardService
                 'totalCustomersWaiting' => $totalCustomersWaiting,
             ],
             // Keep these arrays in payload contract; frontend still uses local dummy data for now.
-            'counters' => [],
+            'counters' => $counters,
             'contributionData' => [],
             'serviceTypeData' => [],
             'meta' => [
@@ -127,5 +129,88 @@ class DashboardService
         }
 
         return (int) round($totalMinutes / $count);
+    }
+
+    private function buildSupervisorCounters($countersQuery, $ticketsQuery): array
+    {
+        $counters = $countersQuery
+            ->with([
+                'counterType:id,name,code',
+                'activeCounterClerks:id,counter_id,clerk_id,is_active,assigned_at',
+            ])
+            ->get(['id', 'name', 'status', 'counter_type_id', 'office_id']);
+
+        if ($counters->isEmpty()) {
+            return [];
+        }
+
+        $counterIds = $counters->pluck('id')->map(fn ($id) => (string) $id)->values()->all();
+
+        $servedStats = $ticketsQuery
+            ->whereIn('counter_id', $counterIds)
+            ->where('status', 'completed')
+            ->selectRaw('counter_id, COUNT(*) as served_count, AVG(duration_seconds) as avg_duration')
+            ->groupBy('counter_id')
+            ->get()
+            ->keyBy('counter_id');
+
+        $currentTickets = $ticketsQuery
+            ->whereIn('counter_id', $counterIds)
+            ->whereIn('status', ['called', 'serving'])
+            ->orderByDesc('called_at')
+            ->orderByDesc('updated_at')
+            ->get(['counter_id', 'ticket_number'])
+            ->unique('counter_id')
+            ->keyBy('counter_id');
+
+        $clerkIds = $counters
+            ->flatMap(fn ($counter) => $counter->activeCounterClerks->pluck('clerk_id'))
+            ->filter()
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $clerkNames = empty($clerkIds)
+            ? collect()
+            : User::query()->whereIn('id', $clerkIds)->pluck('name', 'id');
+
+        return $counters
+            ->map(function ($counter) use ($servedStats, $currentTickets, $clerkNames) {
+                $counterId = (string) $counter->id;
+                $served = $servedStats->get($counterId);
+                $ticket = $currentTickets->get($counterId);
+                $activeClerkId = $counter->activeCounterClerks->first()?->clerk_id;
+
+                return [
+                    'id' => $counterId,
+                    'name' => (string) $counter->name,
+                    'type' => $this->resolveCounterType($counter->counterType?->code, $counter->counterType?->name),
+                    'officer' => $activeClerkId ? ($clerkNames->get((string) $activeClerkId) ?? 'Unassigned') : 'Unassigned',
+                    'status' => $this->mapCounterStatus((string) $counter->status, $ticket !== null),
+                    'currentTicket' => $ticket?->ticket_number,
+                    'ticketsServed' => (int) ($served?->served_count ?? 0),
+                    'avgServiceTime' => (int) round((float) ($served?->avg_duration ?? 0)),
+                ];
+            })
+            ->sortBy('name')
+            ->values()
+            ->all();
+    }
+
+    private function resolveCounterType(?string $counterTypeCode, ?string $counterTypeName): string
+    {
+        $rawType = $counterTypeCode ?: $counterTypeName ?: '';
+        return strtolower(trim((string) $rawType));
+    }
+
+    private function mapCounterStatus(string $counterStatus, bool $hasCurrentTicket): string
+    {
+        $normalized = strtoupper(trim($counterStatus));
+        if ($normalized !== 'ACTIVE') {
+            return 'offline';
+        }
+
+        return $hasCurrentTicket ? 'busy' : 'available';
     }
 }
