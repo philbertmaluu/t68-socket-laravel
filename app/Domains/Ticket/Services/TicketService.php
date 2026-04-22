@@ -307,10 +307,25 @@ class TicketService
             }
 
             $counterId = (string) $counterAssignment->counter_id;
+            $queueId = $counterAssignment->queue_id
+                ? (string) $counterAssignment->queue_id
+                : null;
+
+            if (!$queueId) {
+                $queue = DB::table('queues')
+                    ->where('counter_id', $counterId)
+                    ->first();
+
+                if (!$queue) {
+                    throw new NotFoundHttpException('No queue found for assigned counter');
+                }
+
+                $queueId = (string) $queue->id;
+            }
             $clerkId = (string) $user->id;
             $scope = strtolower((string) ($filters['scope'] ?? 'all'));
 
-            $ticketsQuery = Ticket::query()->where('counter_id', $counterId);
+            $ticketsQuery = Ticket::query()->where('queue_id', $queueId);
 
             // Waiting tickets are counter-level (no clerk yet), history is clerk-level.
             if ($scope === 'waiting') {
@@ -388,6 +403,7 @@ class TicketService
                 'tickets' => $tickets,
                 'summary' => [
                     'scope' => $scope,
+                    'queue_id' => $queueId,
                     'counter_id' => $counterId,
                     'clerk_id' => $clerkId,
                     'total_tickets' => (int) ((clone $ticketsQuery)->count()),
