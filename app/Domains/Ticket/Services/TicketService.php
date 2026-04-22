@@ -378,6 +378,7 @@ class TicketService
                     'clerk_id',
                     'status',
                     'called_at',
+                    'serving_started_at as start_time',
                     'serving_started_at',
                     'completed_at',
                     'duration_seconds',
