@@ -18,6 +18,7 @@ class BotChatFeatureTest extends TestCase
         parent::setUp();
         config()->set('services.openai.api_key', 'test-api-key');
         config()->set('services.openai.model', 'gpt-4o-mini');
+        Http::preventStrayRequests();
     }
 
     public function test_supervisor_receives_data_grounded_response_with_tool_calls(): void
@@ -29,7 +30,7 @@ class BotChatFeatureTest extends TestCase
         Sanctum::actingAs($user);
 
         Http::fake([
-            'https://api.openai.com/v1/chat/completions' => Http::sequence()
+            'https://api.openai.com/v1/chat/completions*' => Http::sequence()
                 ->push([
                     'choices' => [[
                         'message' => [
@@ -68,6 +69,7 @@ class BotChatFeatureTest extends TestCase
             ->assertJsonPath('data.role_mode', 'supervisor')
             ->assertJsonPath('data.tool_calls.0.tool', 'queue_snapshot');
 
+        Http::assertSentCount(2);
         $this->assertDatabaseCount('bot_conversations', 1);
         $this->assertDatabaseCount('bot_tool_calls', 1);
     }
@@ -81,7 +83,7 @@ class BotChatFeatureTest extends TestCase
         Sanctum::actingAs($user);
 
         Http::fake([
-            'https://api.openai.com/v1/chat/completions' => Http::sequence()->push([
+            'https://api.openai.com/v1/chat/completions*' => Http::sequence()->push([
                 'choices' => [[
                     'message' => [
                         'role' => 'assistant',
@@ -105,6 +107,8 @@ class BotChatFeatureTest extends TestCase
 
         $response->assertStatus(403)
             ->assertJsonPath('success', false);
+
+        Http::assertSentCount(1);
     }
 
     private function seedMinimumAccessData(): void
