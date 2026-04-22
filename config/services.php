@@ -47,4 +47,17 @@ return [
         'qms_short_code' => env('QMS_SHORT_CODE', 'QMS'),
     ],
 
+    'openai' => [
+        'api_key' => env('OPENAI_API_KEY'),
+        'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),
+        'timeout' => (int) env('OPENAI_TIMEOUT', 30),
+        'max_output_tokens' => (int) env('OPENAI_MAX_OUTPUT_TOKENS', 1200),
+    ],
+
+    'mcp' => [
+        'enabled' => env('MCP_ENABLED', true),
+        'server_name' => env('MCP_SERVER_NAME', 'qms-internal-mcp'),
+        'strict_schema_validation' => env('MCP_STRICT_SCHEMA_VALIDATION', true),
+    ],
+
 ];

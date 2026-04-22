@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Domains\Bot\Services\BotOrchestratorService;
+use App\Domains\Bot\Services\McpServerService;
+use App\Domains\Bot\Services\OpenAiClientService;
+use App\Domains\Bot\Services\ToolRegistryService;
 use App\Events\QueuePositionUpdated;
 use App\Events\TicketCalled;
 use App\Events\TicketCompleted;
@@ -26,7 +30,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(BotOrchestratorService::class, fn () => new BotOrchestratorService());
+        $this->app->singleton(ToolRegistryService::class, fn () => new ToolRegistryService());
+        $this->app->singleton(McpServerService::class, fn () => new McpServerService());
+        $this->app->singleton(OpenAiClientService::class, fn () => new OpenAiClientService());
     }
 
     /**
