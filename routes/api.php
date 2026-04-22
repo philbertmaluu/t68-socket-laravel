@@ -47,4 +47,5 @@ Route::prefix('qms')->middleware('auth:sanctum')->group(function () {
     require app_path('Domains/Audit/routes.php');
     require app_path('Domains/Notification/routes.php');
     require app_path('Domains/Dashboard/route.php');
+    require app_path('Domains/Queue/routes.php');
 });
