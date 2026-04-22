@@ -18,10 +18,10 @@ class UserRoleSeeder extends Seeder
     public function run(): void
     {
         // Find the user by user_id (without tenant scope during seeding)
-        $user = User::withoutTenant()->where('user_id', '5148')->first();
+        $user = User::withoutTenant()->where('user_id', '6313')->first();
         
         if (!$user) {
-            $this->command->warn('User with user_id 5148 not found. Please run UserSeeder first.');
+            $this->command->warn('User with user_id 6313 not found. Please run UserSeeder first.');
             return;
         }
 
