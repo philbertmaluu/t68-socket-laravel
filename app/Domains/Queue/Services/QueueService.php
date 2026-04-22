@@ -18,6 +18,8 @@ class QueueService
             ->with([
                 'counter:id,name,status',
                 'counter.services:id,name',
+                'tickets:id,queue_id,ticket_number,status,service_type,created_at',
+                'waitingTickets:id,queue_id,ticket_number,status,service_type,created_at',
             ])
             ->when($officeId, fn ($query) => $query->where('office_id', $officeId))
             ->orderBy('office_id')
@@ -59,8 +61,8 @@ class QueueService
                     'name' => (string) ($counter?->name ?? ''),
                     'status' => $counterStatus,
                 ],
-                'all_tickets' => $queue->tickets,
-                'waiting_tickets' => $queue->waiting_tickets,
+                'all_tickets' => $queue->tickets->values()->all(),
+                'waiting_tickets' => $queue->waitingTickets->values()->all(),
                 'service_types' => $serviceTypes,
                 // Helpful for current frontend shape.
                 'counters' => 1,

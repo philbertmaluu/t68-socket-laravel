@@ -3,10 +3,12 @@
 namespace App\Domains\Queue\Models;
 
 use App\Domains\Counter\Models\Counter;
+use App\Domains\Ticket\Models\Ticket;
 use App\Shared\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Queue extends Model
@@ -42,6 +44,17 @@ class Queue extends Model
     public function counter(): BelongsTo
     {
         return $this->belongsTo(Counter::class, 'counter_id', 'id');
+    }
+
+    public function tickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class, 'queue_id', 'id');
+    }
+
+    public function waitingTickets(): HasMany
+    {
+        return $this->hasMany(Ticket::class, 'queue_id', 'id')
+            ->where('status', 'waiting');
     }
 }
 
