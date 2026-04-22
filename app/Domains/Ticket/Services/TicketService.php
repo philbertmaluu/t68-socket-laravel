@@ -380,6 +380,9 @@ class TicketService
                     'total_cancelled_tickets' => (int) ($statusCounts['cancelled'] ?? 0),
                     'total_duration_seconds' => $totalDurationSeconds,
                     'avg_duration_seconds' => $avgDurationSeconds,
+                    'status_breakdown' => $statusCounts
+                        ->mapWithKeys(fn ($count, $status) => [strtolower((string) $status) => (int) $count])
+                        ->toArray(),
                 ],
             ];
         });
