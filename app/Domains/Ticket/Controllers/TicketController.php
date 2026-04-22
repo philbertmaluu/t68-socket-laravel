@@ -83,8 +83,6 @@ class TicketController extends BaseController
     public function getWaitingAndServingTicketsPerOffice(Request $request): JsonResponse
     {
         try {
-            \Log::info('getWaitingAndServingTicketsPerOffice', ['request' => $request->all()]);
-            
             $device = $request->attributes->get('device') ?? $request->user();
             $deviceId = is_object($device) && isset($device->id) ? (string) $device->id : null;
 

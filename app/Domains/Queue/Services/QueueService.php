@@ -52,8 +52,8 @@ class QueueService
                 'id' => (string) $queue->id,
                 'name' => (string) $queue->name,
                 'status' => $this->normalizeQueueStatus((string) $queue->status),
-                'members_waiting' => (int) $queue->members_waiting,
-                'members_being_served' => (int) $queue->members_being_served,
+                'members_waiting' => $queue->waitingTickets->values()->count(),
+                'members_being_served' => $queue->tickets->values()->count(),
                 'average_wait_time' => (int) $queue->average_wait_time,
                 'office_id' => (string) $queue->office_id,
                 'counter' => [
@@ -64,7 +64,7 @@ class QueueService
                 'all_tickets' => $queue->tickets->values()->all(),
                 'waiting_tickets' => $queue->waitingTickets->values()->all(),
                 'service_types' => $serviceTypes,
-                // Helpful for current frontend shape.
+                // Helpful for frontend.
                 'counters' => 1,
                 'active_counters' => $counterStatus === 'ACTIVE' ? 1 : 0,
                 'created_at' => $queue->created_at,
