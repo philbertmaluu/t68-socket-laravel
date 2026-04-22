@@ -7,10 +7,11 @@ use App\Shared\Traits\Auditable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Queue extends Model
 {
-    use HasFactory, Auditable;
+    use HasFactory, SoftDeletes, Auditable;
 
     protected $table = 'queues';
     protected $primaryKey = 'id';
@@ -23,6 +24,7 @@ class Queue extends Model
         'members_being_served',
         'average_wait_time',
         'office_id',
+            'deleted_by',
     ];
 
     protected function casts(): array
@@ -33,21 +35,13 @@ class Queue extends Model
             'average_wait_time' => 'integer',
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 
     public function counter(): BelongsTo
     {
         return $this->belongsTo(Counter::class, 'counter_id', 'id');
-    }
-
-    /**
-     * Auditable trait calls isForceDeleting() in delete events.
-     * Queue model does not use SoftDeletes, so treat deletes as force deletes.
-     */
-    public function isForceDeleting(): bool
-    {
-        return true;
     }
 }
 

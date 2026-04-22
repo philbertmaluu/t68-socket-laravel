@@ -5,10 +5,11 @@ namespace App\Domains\Device\Models;
 use App\Shared\Traits\Auditable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class DeviceToken extends Model
 {
-    use Auditable;
+    use SoftDeletes, Auditable;
 
     protected $table = 'device_tokens';
 
@@ -17,6 +18,7 @@ class DeviceToken extends Model
         'token',
         'expires_at',
         'last_used_at',
+        'deleted_by',
     ];
 
     protected function casts(): array
@@ -24,6 +26,7 @@ class DeviceToken extends Model
         return [
             'expires_at' => 'datetime',
             'last_used_at' => 'datetime',
+            'deleted_at' => 'datetime',
         ];
     }
 
@@ -35,14 +38,5 @@ class DeviceToken extends Model
     public function isExpired(): bool
     {
         return $this->expires_at !== null && $this->expires_at->isPast();
-    }
-
-    /**
-     * Auditable trait calls isForceDeleting() in delete events.
-     * DeviceToken does not use SoftDeletes, so treat deletes as force deletes.
-     */
-    public function isForceDeleting(): bool
-    {
-        return true;
     }
 }
