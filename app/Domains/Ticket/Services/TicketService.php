@@ -288,6 +288,8 @@ class TicketService
 
     public function getClerksTickets(array $filters = []): array
     {
+
+        // ill add office id filter next time  here 
         return TransactionHelper::execute(function () use ($filters) {
             $user = Auth::guard('sanctum')->user();
             if (!$user || !isset($user->id)) {
