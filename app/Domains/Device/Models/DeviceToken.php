@@ -2,11 +2,14 @@
 
 namespace App\Domains\Device\Models;
 
+use App\Shared\Traits\Auditable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DeviceToken extends Model
 {
+    use Auditable;
+
     protected $table = 'device_tokens';
 
     protected $fillable = [
@@ -32,5 +35,14 @@ class DeviceToken extends Model
     public function isExpired(): bool
     {
         return $this->expires_at !== null && $this->expires_at->isPast();
+    }
+
+    /**
+     * Auditable trait calls isForceDeleting() in delete events.
+     * DeviceToken does not use SoftDeletes, so treat deletes as force deletes.
+     */
+    public function isForceDeleting(): bool
+    {
+        return true;
     }
 }
