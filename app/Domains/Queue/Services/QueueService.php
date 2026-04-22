@@ -59,6 +59,8 @@ class QueueService
                     'name' => (string) ($counter?->name ?? ''),
                     'status' => $counterStatus,
                 ],
+                'all_tickets' => $queue->tickets,
+                'waiting_tickets' => $queue->waiting_tickets,
                 'service_types' => $serviceTypes,
                 // Helpful for current frontend shape.
                 'counters' => 1,
