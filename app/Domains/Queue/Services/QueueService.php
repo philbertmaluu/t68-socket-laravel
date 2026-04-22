@@ -14,12 +14,26 @@ class QueueService
      */
     public function getAllQueuesPerOffice(?string $officeId = null): array
     {
+        $todayDate = now()->toDateString();
+
         $queueRows = Queue::query()
             ->with([
                 'counter:id,name,status',
                 'counter.services:id,name',
-                'tickets:id,queue_id,ticket_number,status,service_type,created_at',
-                'waitingTickets:id,queue_id,ticket_number,status,service_type,created_at',
+                'tickets' => fn ($query) => $query
+                    ->whereDate('created_at', $todayDate)
+                    ->select(['id', 'queue_id', 'ticket_number', 'status', 'service_type', 'created_at']),
+                'waitingTickets' => fn ($query) => $query
+                    ->whereDate('created_at', $todayDate)
+                    ->select(['id', 'queue_id', 'ticket_number', 'status', 'service_type', 'created_at']),
+            ])
+            ->withCount([
+                'tickets as members_waiting_today_count' => fn ($query) => $query
+                    ->where('status', 'waiting')
+                    ->whereDate('created_at', $todayDate),
+                'tickets as members_served_today_count' => fn ($query) => $query
+                    ->where('status', '!=', 'waiting')
+                    ->whereDate('created_at', $todayDate),
             ])
             ->when($officeId, fn ($query) => $query->where('office_id', $officeId))
             ->orderBy('office_id')
@@ -52,8 +66,8 @@ class QueueService
                 'id' => (string) $queue->id,
                 'name' => (string) $queue->name,
                 'status' => $this->normalizeQueueStatus((string) $queue->status),
-                'members_waiting' => $queue->waitingTickets->values()->count(),
-                'members_being_served' => $queue->tickets->values()->count(),
+                'members_waiting' => (int) ($queue->members_waiting_today_count ?? 0),
+                'members_being_served' => (int) ($queue->members_served_today_count ?? 0),
                 'average_wait_time' => (int) $queue->average_wait_time,
                 'office_id' => (string) $queue->office_id,
                 'counter' => [
