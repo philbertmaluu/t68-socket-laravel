@@ -285,6 +285,106 @@ class TicketService
         });
     }
 
+
+    public function getClerksTickets(array $filters = []): array
+    {
+        return TransactionHelper::execute(function () use ($filters) {
+            $user = Auth::guard('sanctum')->user();
+            if (!$user || !isset($user->id)) {
+                throw new AuthenticationException('User not authenticated');
+            }
+
+            $counterAssignment = CounterClerk::query()
+                ->where('clerk_id', (string) $user->id)
+                ->where('is_active', true)
+                ->latest('assigned_at')
+                ->first();
+
+            if (!$counterAssignment) {
+                throw new NotFoundHttpException('User not assigned to a counter');
+            }
+
+            $counterId = (string) $counterAssignment->counter_id;
+            $clerkId = (string) $user->id;
+
+            $ticketsQuery = Ticket::query()
+                ->where('counter_id', $counterId)
+                ->where('clerk_id', $clerkId);
+
+            if (!empty($filters['status']) && $filters['status'] !== 'all') {
+                $ticketsQuery->where('status', strtolower((string) $filters['status']));
+            }
+
+            if (!empty($filters['date_from'])) {
+                $ticketsQuery->whereDate('created_at', '>=', $filters['date_from']);
+            }
+
+            if (!empty($filters['date_to'])) {
+                $ticketsQuery->whereDate('created_at', '<=', $filters['date_to']);
+            }
+
+            if (!empty($filters['search'])) {
+                $search = trim((string) $filters['search']);
+                $ticketsQuery->where(function ($query) use ($search) {
+                    $query
+                        ->where('ticket_number', 'like', "%{$search}%")
+                        ->orWhere('service_type', 'like', "%{$search}%")
+                        ->orWhere('member_name', 'like', "%{$search}%")
+                        ->orWhere('member_number', 'like', "%{$search}%");
+                });
+            }
+
+            $tickets = (clone $ticketsQuery)
+                ->orderByDesc('created_at')
+                ->get([
+                    'id',
+                    'ticket_number',
+                    'service_type',
+                    'clerk_id',
+                    'status',
+                    'called_at',
+                    'serving_started_at',
+                    'completed_at',
+                    'duration_seconds',
+                    'transferred_to_counter_id',
+                    'created_at',
+                    'updated_at',
+                ]);
+
+            $statusCounts = (clone $ticketsQuery)
+                ->selectRaw('LOWER(status) as status, COUNT(*) as total')
+                ->groupBy('status')
+                ->pluck('total', 'status');
+
+            $totalDurationSeconds = (int) ((clone $ticketsQuery)->sum('duration_seconds') ?? 0);
+            $avgDurationSeconds = (int) round(
+                (clone $ticketsQuery)
+                    ->whereNotNull('duration_seconds')
+                    ->where('duration_seconds', '>', 0)
+                    ->avg('duration_seconds') ?? 0
+            );
+
+            return [
+                'tickets' => $tickets,
+                'summary' => [
+                    'counter_id' => $counterId,
+                    'clerk_id' => $clerkId,
+                    'total_tickets' => (int) ((clone $ticketsQuery)->count()),
+                    'total_waiting_tickets' => (int) ($statusCounts['waiting'] ?? 0),
+                    'total_called_tickets' => (int) ($statusCounts['called'] ?? 0),
+                    'total_serving_tickets' => (int) ($statusCounts['serving'] ?? 0),
+                    'total_completed_tickets' => (int) ($statusCounts['completed'] ?? 0),
+                    'total_skipped_tickets' => (int) ($statusCounts['skipped'] ?? 0),
+                    'total_transferred_tickets' => (int) ($statusCounts['transferred'] ?? 0),
+                    'total_suspend_tickets' => (int) ($statusCounts['suspend'] ?? 0),
+                    'total_cancelled_tickets' => (int) ($statusCounts['cancelled'] ?? 0),
+                    'total_duration_seconds' => $totalDurationSeconds,
+                    'avg_duration_seconds' => $avgDurationSeconds,
+                ],
+            ];
+        });
+    }
+
     /**
      * @return array{prefix: string, num: int}|null
      */

@@ -36,6 +36,22 @@ class TicketController extends BaseController
         }
     }
 
+    public function getClerksTickets(Request $request): JsonResponse
+    {
+        try {
+            $clerks = $this->service->getClerksTickets($request->all());
+            return $this->sendResponse($clerks, 'Clerks tickets retrieved successfully');
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve clerks tickets', ['error' => $e->getMessage()], 500);
+        }
+    }
+
     /**
      * Store a newly created ticket.
      * 
@@ -157,5 +173,6 @@ class TicketController extends BaseController
             return $this->sendError('Failed to call next ticket', ['error' => $e->getMessage()], 500);
         }
     }
+
 }
 
