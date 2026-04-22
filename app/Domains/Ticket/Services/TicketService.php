@@ -426,6 +426,75 @@ class TicketService
         });
     }
 
+    public function getWaitingAndServingTicketsPerOffice(array $filters = []): array
+    {
+        return TransactionHelper::execute(function () use ($filters) {
+            $deviceId = isset($filters['device_id']) ? (string) $filters['device_id'] : null;
+            $officeId = null;
+
+            if ($deviceId) {
+                $officeId = DB::table('devices')
+                    ->where('id', $deviceId)
+                    ->value('office_id');
+            }
+
+            if (!$officeId && isset($filters['office_id'])) {
+                $officeId = (string) $filters['office_id'];
+            }
+
+            if (!$officeId) {
+                throw new UnprocessableEntityHttpException('Unable to resolve office_id from authenticated device');
+            }
+
+            $currentTickets = Ticket::query()
+                ->leftJoin('queues as q', 'q.id', '=', 'tickets.queue_id')
+                ->where('tickets.office_id', $officeId)
+                ->whereIn('tickets.status', ['serving', 'called'])
+                ->orderByRaw("CASE tickets.status WHEN 'serving' THEN 0 WHEN 'called' THEN 1 ELSE 2 END")
+                ->orderByDesc('tickets.called_at')
+                ->orderByDesc('tickets.updated_at')
+                ->get([
+                    'tickets.id',
+                    'tickets.ticket_number',
+                    'tickets.service_type',
+                    'tickets.status',
+                    'tickets.queue_id',
+                    'tickets.counter_id',
+                    'tickets.called_at',
+                    'tickets.serving_started_at',
+                    'tickets.created_at',
+                    DB::raw('q.name as queue_name'),
+                ]);
+
+            $waitingTickets = Ticket::query()
+                ->leftJoin('queues as q', 'q.id', '=', 'tickets.queue_id')
+                ->where('tickets.office_id', $officeId)
+                ->where('tickets.status', 'waiting')
+                ->orderBy('tickets.queue_position')
+                ->orderBy('tickets.created_at')
+                ->get([
+                    'tickets.id',
+                    'tickets.ticket_number',
+                    'tickets.service_type',
+                    'tickets.status',
+                    'tickets.queue_id',
+                    'tickets.counter_id',
+                    'tickets.created_at',
+                    DB::raw('q.name as queue_name'),
+                ]);
+
+            return [
+                'office_id' => $officeId,
+                'current_tickets' => $currentTickets,
+                'waiting_tickets' => $waitingTickets,
+                'summary' => [
+                    'total_current_tickets' => $currentTickets->count(),
+                    'total_waiting_tickets' => $waitingTickets->count(),
+                ],
+            ];
+        });
+    }
+
     /**
      * @return array{prefix: string, num: int}|null
      */

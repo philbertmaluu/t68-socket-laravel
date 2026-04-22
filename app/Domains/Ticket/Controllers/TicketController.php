@@ -21,6 +21,16 @@ class TicketController extends BaseController
         $this->service = new TicketService();
     }
 
+    /**
+     * List tickets with pagination and optional filters.
+     *
+     * Supported query params:
+     * - per_page, page
+     * - status, queue_id, service_id, counter_id, clerk_id, office_id, priority
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
     public function index(Request $request): JsonResponse
     {
         try {
@@ -36,6 +46,17 @@ class TicketController extends BaseController
         }
     }
 
+
+    /**
+     * Get queue tickets scoped to the authenticated clerk context.
+     *
+     * Uses current clerk assignment and request filters to return:
+     * - tickets list
+     * - summary statistics for cards/charts
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
     public function getClerksTickets(Request $request): JsonResponse
     {
         try {
@@ -49,6 +70,34 @@ class TicketController extends BaseController
             return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
             return $this->sendError('Failed to retrieve clerks tickets', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+
+    /**
+     * Get waiting and serving tickets grouped by office.
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function getWaitingAndServingTicketsPerOffice(Request $request): JsonResponse
+    {
+        try {
+            $device = $request->attributes->get('device') ?? $request->user();
+            $deviceId = is_object($device) && isset($device->id) ? (string) $device->id : null;
+
+            if (!$deviceId) {
+                return $this->sendError('Authenticated device not found', [], 401);
+            }
+
+            $tickets = $this->service->getWaitingAndServingTicketsPerOffice([
+                'device_id' => $deviceId,
+            ]);
+            return $this->sendResponse($tickets, 'Waiting and serving tickets retrieved successfully');
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve waiting and serving tickets', ['error' => $e->getMessage()], 500);
         }
     }
 
