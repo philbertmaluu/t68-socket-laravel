@@ -14,6 +14,7 @@ use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
@@ -429,24 +430,49 @@ class TicketService
     public function getWaitingAndServingTicketsPerOffice(array $filters = []): array
     {
         return TransactionHelper::execute(function () use ($filters) {
-      
+            Log::info('TV queue fetch: start', [
+                'has_device_id' => isset($filters['device_id']),
+                'has_office_id' => isset($filters['office_id']),
+                'device_id' => isset($filters['device_id']) ? (string) $filters['device_id'] : null,
+                'office_id_from_filters' => isset($filters['office_id']) ? (string) $filters['office_id'] : null,
+            ]);
+
             $deviceId = isset($filters['device_id']) ? (string) $filters['device_id'] : null;
             $officeId = null;
 
             if ($deviceId) {
+                Log::info('TV queue fetch: resolving office_id from device', [
+                    'device_id' => $deviceId,
+                ]);
                 $officeId = DB::table('devices')
                     ->where('id', $deviceId)
                     ->value('office_id');
+                Log::info('TV queue fetch: device office_id resolved', [
+                    'device_id' => $deviceId,
+                    'resolved_office_id' => $officeId ? (string) $officeId : null,
+                ]);
             }
 
             if (!$officeId && isset($filters['office_id'])) {
+                Log::warning('TV queue fetch: falling back to office_id from filters', [
+                    'fallback_office_id' => (string) $filters['office_id'],
+                    'device_id' => $deviceId,
+                ]);
                 $officeId = (string) $filters['office_id'];
             }
 
             if (!$officeId) {
+                Log::error('TV queue fetch: office_id resolution failed', [
+                    'device_id' => $deviceId,
+                    'filters' => $filters,
+                ]);
                 throw new UnprocessableEntityHttpException('Unable to resolve office_id from authenticated device');
             }
 
+            Log::info('TV queue fetch: querying current tickets', [
+                'office_id' => (string) $officeId,
+                'statuses' => ['serving', 'called'],
+            ]);
             $currentTickets = Ticket::query()
                 ->leftJoin('queues as q', 'q.id', '=', 'tickets.queue_id')
                 ->where('tickets.office_id', $officeId)
@@ -466,7 +492,15 @@ class TicketService
                     'tickets.created_at',
                     DB::raw('q.name as queue_name'),
                 ]);
+            Log::info('TV queue fetch: current tickets loaded', [
+                'office_id' => (string) $officeId,
+                'count' => $currentTickets->count(),
+            ]);
 
+            Log::info('TV queue fetch: querying waiting tickets', [
+                'office_id' => (string) $officeId,
+                'status' => 'waiting',
+            ]);
             $waitingTickets = Ticket::query()
                 ->leftJoin('queues as q', 'q.id', '=', 'tickets.queue_id')
                 ->where('tickets.office_id', $officeId)
@@ -483,6 +517,16 @@ class TicketService
                     'tickets.created_at',
                     DB::raw('q.name as queue_name'),
                 ]);
+            Log::info('TV queue fetch: waiting tickets loaded', [
+                'office_id' => (string) $officeId,
+                'count' => $waitingTickets->count(),
+            ]);
+
+            Log::info('TV queue fetch: success', [
+                'office_id' => (string) $officeId,
+                'total_current_tickets' => $currentTickets->count(),
+                'total_waiting_tickets' => $waitingTickets->count(),
+            ]);
 
             return [
                 'office_id' => $officeId,
