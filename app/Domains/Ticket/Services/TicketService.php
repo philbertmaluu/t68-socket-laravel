@@ -429,6 +429,7 @@ class TicketService
     public function getWaitingAndServingTicketsPerOffice(array $filters = []): array
     {
         return TransactionHelper::execute(function () use ($filters) {
+            \Log::info('getWaitingAndServingTicketsPerOffice in service', ['filters' => $filters]);
             $deviceId = isset($filters['device_id']) ? (string) $filters['device_id'] : null;
             $officeId = null;
 
@@ -438,6 +439,8 @@ class TicketService
                     ->value('office_id');
             }
 
+            \Log::info('officeId in service', ['officeId' => $officeId]);
+
             if (!$officeId && isset($filters['office_id'])) {
                 $officeId = (string) $filters['office_id'];
             }
@@ -445,6 +448,8 @@ class TicketService
             if (!$officeId) {
                 throw new UnprocessableEntityHttpException('Unable to resolve office_id from authenticated device');
             }
+
+            \Log::info('officeId in service', ['officeId' => $officeId]);
 
             $currentTickets = Ticket::query()
                 ->leftJoin('queues as q', 'q.id', '=', 'tickets.queue_id')
