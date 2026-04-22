@@ -306,10 +306,28 @@ class TicketService
 
             $counterId = (string) $counterAssignment->counter_id;
             $clerkId = (string) $user->id;
+            $scope = strtolower((string) ($filters['scope'] ?? 'all'));
 
-            $ticketsQuery = Ticket::query()
-                ->where('counter_id', $counterId)
-                ->where('clerk_id', $clerkId);
+            $ticketsQuery = Ticket::query()->where('counter_id', $counterId);
+
+            // Waiting tickets are counter-level (no clerk yet), history is clerk-level.
+            if ($scope === 'waiting') {
+                $ticketsQuery->where('status', 'waiting');
+            } elseif ($scope === 'history') {
+                $ticketsQuery
+                    ->where('status', '!=', 'waiting')
+                    ->where('clerk_id', $clerkId);
+            } else {
+                $ticketsQuery->where(function ($query) use ($clerkId) {
+                    $query
+                        ->where('status', 'waiting')
+                        ->orWhere(function ($historyQuery) use ($clerkId) {
+                            $historyQuery
+                                ->where('status', '!=', 'waiting')
+                                ->where('clerk_id', $clerkId);
+                        });
+                });
+            }
 
             if (!empty($filters['status']) && $filters['status'] !== 'all') {
                 $ticketsQuery->where('status', strtolower((string) $filters['status']));
@@ -367,6 +385,7 @@ class TicketService
             return [
                 'tickets' => $tickets,
                 'summary' => [
+                    'scope' => $scope,
                     'counter_id' => $counterId,
                     'clerk_id' => $clerkId,
                     'total_tickets' => (int) ((clone $ticketsQuery)->count()),
