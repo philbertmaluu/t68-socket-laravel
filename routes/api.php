@@ -27,6 +27,7 @@ require app_path('Domains/Authentication/routes.php');
 // Public routes (no authentication required)
 Route::prefix('qms')->group(function () {
     require app_path('Domains/Ticket/routes.php');
+    require app_path('Domains/Feedback/routes.php');
     Route::post('devices/authenticate', [DeviceAuthController::class, 'authenticate']);
     Route::get('public/services', [PublicServiceController::class, 'index']);
 });
