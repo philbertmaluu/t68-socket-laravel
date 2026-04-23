@@ -4,6 +4,7 @@ namespace App\Domains\Queue\Services;
 
 use App\Domains\Queue\Models\Queue;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class QueueService
 {
@@ -47,9 +48,12 @@ class QueueService
 
             $serviceTypes = [];
             if ($counter) {
-                $serviceTypes = $counter->services()
-                    ->wherePivot('office_id', (string) $queue->office_id)
-                    ->pluck('services.name')
+                // Load service names directly from COUNTER_SERVICES by counter_id.
+                // This avoids relation scope issues and guarantees counter-linked services are returned.
+                $serviceTypes = DB::table('counter_services as cs')
+                    ->join('services as s', 's.id', '=', 'cs.service_id')
+                    ->where('cs.counter_id', $counter->id)
+                    ->pluck('s.name')
                     ->filter()
                     ->unique()
                     ->values()
