@@ -25,8 +25,8 @@ class PublicServiceController extends BaseController
         try {
             $perPage = (int) $request->get('per_page', 500);
             $page = (int) $request->get('page', 1);
-            
-            // get office_id from the authenticated  device 
+            $officeId = $request->get('office_id');
+            $officeId = is_string($officeId) ? trim($officeId) : null;
 
             $result = $this->service->listPublic($perPage, $page, $officeId);
 
