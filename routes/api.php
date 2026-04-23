@@ -28,12 +28,12 @@ require app_path('Domains/Authentication/routes.php');
 Route::prefix('qms')->group(function () {
     require app_path('Domains/Ticket/routes.php');
     Route::post('devices/authenticate', [DeviceAuthController::class, 'authenticate']);
-    Route::get('public/services', [PublicServiceController::class, 'index']);
 });
 
 // Device-authenticated routes (X-Device-Token or Authorization: Bearer <device_token>)
 Route::prefix('qms')->middleware('device.auth')->group(function () {
     Route::patch('devices/me', [DeviceAuthController::class, 'updateSession']);
+    Route::get('public/services', [PublicServiceController::class, 'index']);
 
     //get wating tickets and current serving tickets per office
     Route::get('tickets/waiting-and-serving', [TicketController::class, 'getWaitingAndServingTicketsPerOffice']);
