@@ -45,22 +45,16 @@ class QueueService
             $counterId = $counter ? (string) $counter->id : '';
             $counterStatus = strtoupper((string) ($counter?->status ?? ''));
 
-            $serviceTypes = $counter
-                ? $counter->services
-                    ->filter(function ($service) use ($queue) {
-                        $pivotOfficeId = (string) ($service->pivot?->office_id ?? '');
-                        if ($pivotOfficeId === '') {
-                            return true;
-                        }
-
-                        return $pivotOfficeId === (string) $queue->office_id;
-                    })
-                    ->pluck('name')
+            $serviceTypes = [];
+            if ($counter) {
+                $serviceTypes = $counter->services()
+                    ->wherePivot('office_id', (string) $queue->office_id)
+                    ->pluck('services.name')
                     ->filter()
                     ->unique()
                     ->values()
-                    ->all()
-                : [];
+                    ->all();
+            }
 
             return [
                 'id' => (string) $queue->id,
