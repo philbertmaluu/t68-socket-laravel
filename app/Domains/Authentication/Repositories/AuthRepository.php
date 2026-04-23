@@ -129,6 +129,70 @@ class AuthRepository
             ->get();
     }
 
+    /**
+     * Get active roles for a specific internal users.id value (USER_ROLES.USER_ID).
+     */
+    public function getUserRolesByUserId(int $userId): array
+    {
+        return DB::table('user_roles as ur')
+            ->join('users as u', 'u.id', '=', 'ur.user_id')
+            ->join('roles as r', 'r.id', '=', 'ur.role_id')
+            ->leftJoin('modules as m', 'm.id', '=', 'r.module_id')
+            ->where('ur.user_id', $userId)
+            ->whereNull('ur.deleted_at')
+            ->where('ur.status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('ur.end_date')
+                    ->orWhere('ur.end_date', '>=', now());
+            })
+            ->where('ur.start_date', '<=', now())
+            ->select(
+                'ur.id as user_role_id',
+                'ur.user_id',
+                'u.user_id as pfno',
+                'u.name as fullname',
+                'r.id as role_id',
+                'r.role_code',
+                'r.role_name',
+                'm.name as module_name',
+                'ur.status',
+                'ur.start_date',
+                'ur.end_date'
+            )
+            ->orderBy('m.name')
+            ->orderBy('r.role_name')
+            ->get()
+            ->map(fn ($row) => [
+                'user_role_id' => (int) $row->user_role_id,
+                'user_id' => (int) $row->user_id,
+                'pfno' => (string) ($row->pfno ?? ''),
+                'fullname' => $row->fullname ?? 'Unknown',
+                'role_id' => (int) $row->role_id,
+                'role_code' => (string) ($row->role_code ?? ''),
+                'role_name' => (string) ($row->role_name ?? ''),
+                'module_name' => (string) ($row->module_name ?? ''),
+                'status' => (string) ($row->status ?? ''),
+                'start_date' => $row->start_date ? \Carbon\Carbon::parse($row->start_date)->toIso8601String() : null,
+                'end_date' => $row->end_date ? \Carbon\Carbon::parse($row->end_date)->toIso8601String() : null,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Get active roles for a PFNO (users.user_id), resolved to internal users.id first.
+     */
+    public function getUserRolesByPfno(string $pfno): array
+    {
+
+        $user = User::withoutTenant()->where('user_id', trim($pfno))->first();
+        if (!$user) {
+            return [];
+        }
+
+        return $this->getUserRolesByUserId((int) $user->id);
+    }
+
     public function getPublicRoles(?int $moduleId): \Illuminate\Support\Collection
     {
         if (!$moduleId) {

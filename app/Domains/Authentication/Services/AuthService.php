@@ -108,6 +108,25 @@ class AuthService
         return $roles->concat($publicRoles)->toArray();
     }
 
+    public function getUserRolesByUserId(int $userId): array
+    {
+        if ($userId <= 0) {
+            throw new \Exception('Invalid user ID.');
+        }
+
+        return $this->repository->getUserRolesByUserId($userId);
+    }
+
+    public function getUserRolesByPfno(string $pfno): array
+    {
+        $trimmedPfno = trim($pfno);
+        if ($trimmedPfno === '') {
+            throw new \Exception('Invalid PFNO.');
+        }
+
+        return $this->repository->getUserRolesByPfno($trimmedPfno);
+    }
+
     public function getTransferRoles(): array
     {
         return $this->repository->getTransferRoles();

@@ -65,6 +65,7 @@ class IctmsAccessService
         $user = $this->repository->getOrCreateUserByPfno($pfno, $createdByUserId);
         $created = (bool) $user->wasRecentlyCreated;
         return [
+            'user_id' => (int) $user->id,
             'pfno' => $user->user_id,
             'fullname' => $user->name ?? 'Unknown',
             'created' => $created,

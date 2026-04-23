@@ -10,6 +10,8 @@ Route::prefix('qms')->group(function () {
     Route::post('/auth/refresh-token', [AuthController::class, 'refreshToken']);
     Route::get('/auth/user-details', [AuthController::class, 'userDetails'])->middleware('auth:sanctum');
     Route::get('/auth/user-roles/{module}', [AuthController::class, 'userRoles'])->middleware('auth:sanctum');
+    Route::get('/auth/user-roles/by-user/{userId}', [AuthController::class, 'userRolesByUserId'])->middleware('auth:sanctum');
+    Route::get('/auth/user-roles/by-pfno/{pfno}', [AuthController::class, 'userRolesByPfno'])->middleware('auth:sanctum');
     Route::get('/auth/transfer-roles', [AuthController::class, 'transferRoles'])->middleware('auth:sanctum');
     Route::get('/auth/module-access', [AuthController::class, 'moduleAccess'])->middleware('auth:sanctum');
     Route::get('/auth/modules', [AuthController::class, 'modules']);

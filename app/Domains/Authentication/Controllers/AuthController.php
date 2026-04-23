@@ -58,6 +58,26 @@ class AuthController extends BaseController
         }
     }
 
+    public function userRolesByUserId(string $userId): JsonResponse
+    {
+        try {
+            $result = $this->service->getUserRolesByUserId((int) $userId);
+            return $this->sendResponse($result, 'Role details retrieved successfully.');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to get user roles.', ['error' => $e->getMessage()], 400);
+        }
+    }
+
+    public function userRolesByPfno(string $pfno): JsonResponse
+    {
+        try {
+            $result = $this->service->getUserRolesByPfno($pfno);
+            return $this->sendResponse($result, 'Role details retrieved successfully.');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to get user roles.', ['error' => $e->getMessage()], 400);
+        }
+    }
+
     public function transferRoles(): JsonResponse
     {
         try {
