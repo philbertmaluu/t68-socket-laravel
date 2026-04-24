@@ -21,7 +21,6 @@ class Service extends Model
     protected $primaryKey = 'id';
 
     protected $fillable = [
-        'id',
         'tenant_id',
         'name',
         'swahili_name',
