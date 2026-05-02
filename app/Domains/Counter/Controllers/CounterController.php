@@ -46,7 +46,7 @@ class CounterController extends BaseController
 
             return $this->sendResponse($clerks, 'Clerks retrieved successfully');
         } catch (\Exception $e) {
-            return $this->sendError('Failed to retrieve clerks', [], 500);
+            return $this->sendError('Failed to retrieve clerks', ['error' => $e->getMessage()], 500);
         }
     }
 

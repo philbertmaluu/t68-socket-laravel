@@ -32,7 +32,7 @@ class ServiceService
             // tenant_id is automatically set by HasTenant trait from authenticated user
             // Hardcode region_id and office_id for now (will use auth user later)
             // TODO: Get from authenticated user's region/office when available
-            $data['region_id'] = $data['region_id'] ?? '100';
+            $data['region_id'] = $data['region_id'] ?? '1';
             $data['office_id'] = $data['office_id'] ?? '100';
 
             return $this->repository->create($data);
