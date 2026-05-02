@@ -32,7 +32,7 @@ class ServiceService
     {
         return TransactionHelper::execute(function () use ($data) {
             
-            // get office and region from auth user if  not provided on the request
+            // get office and region from auth user if not provided on the request ($data)
             $user = Auth::guard('sanctum')->user();
             if (!$user) {
                 throw new \Exception('User not authenticated');
@@ -50,6 +50,15 @@ class ServiceService
     public function updateService(Service $service, array $data): Service
     {
         return TransactionHelper::execute(function () use ($service, $data) {
+            // get office and region from auth user if not provided on the request ($data)
+            $user = Auth::guard('sanctum')->user();
+            if (!$user) {
+                throw new \Exception('User not authenticated');
+            }
+
+            $data['region_id'] = $data['region_id'] ?? $user->office_code;
+            $data['office_id'] = $data['office_id'] ?? $user->office_code;
+
             return $this->repository->update($service, $data);
         });
     }
