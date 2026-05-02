@@ -6,6 +6,7 @@ use App\Domains\Service\Models\Service;
 use App\Domains\Service\Repositories\ServiceRepository;
 use App\Shared\Helpers\TransactionHelper;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Auth;
 
 class ServiceService
 {
@@ -29,11 +30,15 @@ class ServiceService
     public function createService(array $data): Service
     {
         return TransactionHelper::execute(function () use ($data) {
-            // tenant_id is automatically set by HasTenant trait from authenticated user
-            // Hardcode region_id and office_id for now (will use auth user later)
-            // TODO: Get from authenticated user's region/office when available
-            $data['region_id'] = $data['region_id'] ?? '1';
-            $data['office_id'] = $data['office_id'] ?? '100';
+            
+            // get office and region from auth user if  not provided on the request
+            $user = Auth::guard('sanctum')->user();
+            if (!$user) {
+                throw new \Exception('User not authenticated');
+            }
+
+            $data['region_id'] = $data['region_id'] ?? $user->office_code;
+            $data['office_id'] = $data['office_id'] ?? $user->office_code;
 
             return $this->repository->create($data);
         });
