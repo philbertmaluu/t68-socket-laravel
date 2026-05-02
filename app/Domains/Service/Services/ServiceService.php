@@ -7,6 +7,7 @@ use App\Domains\Service\Repositories\ServiceRepository;
 use App\Shared\Helpers\TransactionHelper;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class ServiceService
 {
@@ -36,6 +37,8 @@ class ServiceService
             if (!$user) {
                 throw new \Exception('User not authenticated');
             }
+
+            Log::info('User', ['user' => $user]);
 
             $data['region_id'] = $data['region_id'] ?? $user->office_code;
             $data['office_id'] = $data['office_id'] ?? $user->office_code;
