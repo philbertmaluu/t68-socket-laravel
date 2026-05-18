@@ -115,4 +115,25 @@ class DeviceController extends BaseController
             return $this->sendError('Failed to regenerate device key', ['error' => $e->getMessage()], 500);
         }
     }
+
+
+    public function getRegionsFromHrp(): JsonResponse
+    {
+        try {
+            $regions = $this->service->getRegionsFromHrp();
+            return $this->sendResponse($regions, 'Regions retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve regions', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function getOfficesFromHrp(string $region_id): JsonResponse
+    {
+        try {
+            $offices = $this->service->getOfficesFromHrp($region_id);
+            return $this->sendResponse($offices, 'Offices retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve offices', ['error' => $e->getMessage()], 500);
+        }
+    }
 }

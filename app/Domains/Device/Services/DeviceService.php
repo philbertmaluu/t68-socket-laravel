@@ -9,6 +9,7 @@ use App\Shared\Helpers\TransactionHelper;
 use App\Traits\UserOfficeTrait;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 
 class DeviceService
 {
@@ -38,7 +39,7 @@ class DeviceService
 
     public function createDevice(array $data): Device
     {
-        $data = $this->fillOfficeRegionFromHrp($data);
+        $data = $this->fillOfficeRegionFromHrpIfMissing($data);
         $this->validateDeviceData($data);
 
         return TransactionHelper::execute(function () use ($data) {
@@ -48,7 +49,7 @@ class DeviceService
 
     public function updateDevice(Device $device, array $data): Device
     {
-        $data = $this->fillOfficeRegionFromHrp($data);
+        $data = $this->fillOfficeRegionFromHrpIfMissing($data);
         $this->validateDeviceData($data, $device);
 
         return TransactionHelper::execute(function () use ($device, $data) {
@@ -152,5 +153,42 @@ class DeviceService
                 throw new \InvalidArgumentException('Serial number already exists');
             }
         }
+    }
+
+
+    public function getRegionsFromHrp(): array
+    {
+        return DB::table('hrpd.region')
+            ->select(['region_id as id', 'region_name as name'])
+            ->orderBy('region_name')
+            ->get()
+            ->map(fn ($row) => [
+                'id' => (string) $row->id,
+                'name' => (string) $row->name,
+            ])
+            ->values()
+            ->all();
+    }
+
+    public function getOfficesFromHrp(string $regionId): array
+    {
+        return DB::table('hrpd.office')
+            ->select([
+                'office_id as id',
+                'office_name as name',
+                'region_id',
+                'office_code',
+            ])
+            ->where('region_id', $regionId)
+            ->orderBy('office_name')
+            ->get()
+            ->map(fn ($row) => [
+                'id' => (string) $row->id,
+                'name' => (string) $row->name,
+                'region_id' => (string) $row->region_id,
+                'office_code' => $row->office_code !== null ? (string) $row->office_code : null,
+            ])
+            ->values()
+            ->all();
     }
 }

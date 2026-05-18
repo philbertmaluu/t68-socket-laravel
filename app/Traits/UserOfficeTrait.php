@@ -60,6 +60,21 @@ trait UserOfficeTrait
         return $data;
     }
 
+    protected function fillOfficeRegionFromHrpIfMissing(array $data): array
+    {
+        $location = $this->getUserOfficeAndRegionFromHrp();
+
+        if (empty($data['office_id'])) {
+            $data['office_id'] = $location['office_id'];
+        }
+
+        if (empty($data['region_id'])) {
+            $data['region_id'] = $location['region_id'];
+        }
+
+        return $data;
+    }
+
     protected function scopeFiltersByHrpOffice(array $filters): array
     {
         $location = $this->getUserOfficeAndRegionFromHrp();
