@@ -6,12 +6,15 @@ use App\Domains\Bot\Enums\BotRoleMode;
 use App\Domains\Bot\Models\BotConversation;
 use App\Domains\Bot\Models\BotToolCall;
 use App\Domains\Authentication\Models\User;
+use App\Traits\UserOfficeTrait;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class BotOrchestratorService
 {
+    use UserOfficeTrait;
+
     private ToolRegistryService $toolRegistry;
     private McpServerService $mcpServerService;
     private OpenAiClientService $openAiClientService;
@@ -118,13 +121,23 @@ class BotOrchestratorService
     {
         $contextOfficeId = $context['office_id'] ?? null;
         $clerkOfficeId = $this->resolveClerkOfficeId($user?->id);
+        $hrpOfficeId = $this->resolveHrpOfficeId();
 
         return [
             'user_id' => $user?->id,
             'tenant_id' => $user?->tenant_id !== null ? (int) $user->tenant_id : null,
-            'office_id' => $contextOfficeId ?: ($clerkOfficeId ?: ($user?->office_id ?? null)),
+            'office_id' => $contextOfficeId ?: ($clerkOfficeId ?: $hrpOfficeId),
             'role_mode' => $roleMode->value,
         ];
+    }
+
+    private function resolveHrpOfficeId(): ?string
+    {
+        try {
+            return $this->getUserOfficeAndRegionFromHrp()['office_id'] ?? null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     private function buildSystemPrompt(BotRoleMode $roleMode): string
@@ -160,7 +173,7 @@ class BotOrchestratorService
         return BotConversation::create([
             'tenant_id' => $user?->tenant_id,
             'user_id' => $user?->id,
-            'office_id' => $user?->office_id ?? null,
+            'office_id' => $this->resolveHrpOfficeId(),
             'role_mode' => $roleMode->value,
             'message' => $message,
             'response' => $answer,
@@ -180,7 +193,7 @@ class BotOrchestratorService
             BotToolCall::create([
                 'tenant_id' => $user?->tenant_id,
                 'user_id' => $user?->id,
-                'office_id' => $user?->office_id ?? null,
+                'office_id' => $this->resolveHrpOfficeId(),
                 'role_mode' => $roleMode->value,
                 'tool_name' => $toolName,
                 'arguments' => $this->redactSensitive($arguments),

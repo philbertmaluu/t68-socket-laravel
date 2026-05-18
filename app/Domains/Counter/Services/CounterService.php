@@ -7,6 +7,7 @@ use App\Domains\Counter\Models\CounterClerk;
 use App\Domains\Authentication\Models\User;
 use App\Domains\Counter\Repositories\CounterRepository;
 use App\Shared\Helpers\TransactionHelper;
+use App\Traits\UserOfficeTrait;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -15,6 +16,8 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class CounterService
 {
+    use UserOfficeTrait;
+
     private CounterRepository $repository;
 
     public function __construct()
@@ -29,16 +32,15 @@ class CounterService
 
     public function findAll(array $filters = []): Collection
     {
-        return $this->repository->findAll($filters);
+        return $this->repository->findAll($this->scopeFiltersByHrpOffice($filters));
     }
 
     public function createCounter(array $data): Counter
     {
         return TransactionHelper::execute(function () use ($data) {
-            // Hardcode office_id for now
             $clerkId = $data['clerk_id'] ?? null;
             unset($data['clerk_id']);
-            $data['office_id'] = $data['office_id'] ?? '1';
+            $data = $this->fillOfficeRegionFromHrp($data);
             $counter = $this->repository->create($data);
             $this->syncCounterClerkAssignment($counter, $clerkId);
             return $this->attachClerkPayload($counter->fresh(['services']));
@@ -48,13 +50,10 @@ class CounterService
     public function updateCounter(Counter $counter, array $data): Counter
     {
         return TransactionHelper::execute(function () use ($counter, $data) {
-            // Hardcode office_id for now if not provided
             $clerkPayloadProvided = array_key_exists('clerk_id', $data);
             $clerkId = $data['clerk_id'] ?? null;
             unset($data['clerk_id']);
-            if (!isset($data['office_id']) || empty($data['office_id'])) {
-                $data['office_id'] = '1';
-            }
+            $data = $this->fillOfficeRegionFromHrp($data);
             $updatedCounter = $this->repository->update($counter, $data);
             if ($clerkPayloadProvided) {
                 $this->syncCounterClerkAssignment($updatedCounter, $clerkId);
@@ -79,7 +78,7 @@ class CounterService
 
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
-        return $this->repository->paginate($perPage, $page, $filters);
+        return $this->repository->paginate($perPage, $page, $this->scopeFiltersByHrpOffice($filters));
     }
 
     /**

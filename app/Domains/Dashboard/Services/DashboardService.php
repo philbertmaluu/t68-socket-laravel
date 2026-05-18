@@ -6,11 +6,14 @@ use App\Domains\Counter\Models\Counter;
 use App\Domains\Authentication\Models\User;
 use App\Domains\Dashboard\Enums\Dashboard;
 use App\Domains\Ticket\Models\Ticket;
+use App\Traits\UserOfficeTrait;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Auth;
 
 class DashboardService
 {
+    use UserOfficeTrait;
+
     public function supervisorDashboard(): array
     {
         $user = Auth::guard('sanctum')->user();
@@ -18,15 +21,13 @@ class DashboardService
             throw new AuthenticationException('User not authenticated');
         }
 
-        $officeId = $user->office_id ? (string) $user->office_id : null;
+        $officeId = (string) $this->getUserOfficeAndRegionFromHrp()['office_id'];
 
         $countersQuery = Counter::query();
         $ticketsQuery = Ticket::query();
 
-        if ($officeId !== null && $officeId !== '') {
-            $countersQuery->where('office_id', $officeId);
-            $ticketsQuery->where('office_id', $officeId);
-        }
+        $countersQuery->where('office_id', $officeId);
+        $ticketsQuery->where('office_id', $officeId);
 
         $totalCounters = (clone $countersQuery)->count();
         $activeCounters = (clone $countersQuery)->where('status', 'ACTIVE')->count();

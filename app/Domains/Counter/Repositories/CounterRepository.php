@@ -54,7 +54,7 @@ class CounterRepository
 
     public function create(array $data): Counter
     {
-        $officeId = $data['office_id'] ?? '1';
+        $officeId = (string) $data['office_id'];
         $serviceIds = $data['service_ids'] ?? [];
         $serviceIds = is_array($serviceIds) ? array_map('intval', array_values($serviceIds)) : [];
 
@@ -75,7 +75,7 @@ class CounterRepository
 
     public function update(Counter $counter, array $data): Counter
     {
-        $officeId = $data['office_id'] ?? $counter->office_id ?? '1';
+        $officeId = (string) ($data['office_id'] ?? $counter->office_id);
         $serviceIds = $data['service_ids'] ?? null;
         if ($serviceIds !== null && is_array($serviceIds)) {
             $serviceIds = array_map('intval', array_values($serviceIds));

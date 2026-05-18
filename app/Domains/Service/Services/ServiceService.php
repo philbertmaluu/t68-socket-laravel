@@ -5,12 +5,13 @@ namespace App\Domains\Service\Services;
 use App\Domains\Service\Models\Service;
 use App\Domains\Service\Repositories\ServiceRepository;
 use App\Shared\Helpers\TransactionHelper;
+use App\Traits\UserOfficeTrait;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 
 class ServiceService
 {
+    use UserOfficeTrait;
+
     private ServiceRepository $repository;
 
     public function __construct()
@@ -25,23 +26,13 @@ class ServiceService
 
     public function findAll(array $filters = []): Collection
     {
-        return $this->repository->findAll($filters);
+        return $this->repository->findAll($this->scopeFiltersByHrpOffice($filters));
     }
 
     public function createService(array $data): Service
     {
         return TransactionHelper::execute(function () use ($data) {
-            
-            // get office and region from auth user if not provided on the request ($data)
-            $user = Auth::guard('sanctum')->user();
-            if (!$user) {
-                throw new \Exception('User not authenticated');
-            }
-
-            Log::info('User', ['user' => $user]);
-
-            $data['region_id'] = $data['region_id'] ?? $user->office_code;
-            $data['office_id'] = $data['office_id'] ?? $user->office_code;
+            $data = $this->fillOfficeRegionFromHrp($data);
 
             return $this->repository->create($data);
         });
@@ -50,14 +41,7 @@ class ServiceService
     public function updateService(Service $service, array $data): Service
     {
         return TransactionHelper::execute(function () use ($service, $data) {
-            // get office and region from auth user if not provided on the request ($data)
-            $user = Auth::guard('sanctum')->user();
-            if (!$user) {
-                throw new \Exception('User not authenticated');
-            }
-
-            $data['region_id'] = $data['region_id'] ?? $user->office_code;
-            $data['office_id'] = $data['office_id'] ?? $user->office_code;
+            $data = $this->fillOfficeRegionFromHrp($data);
 
             return $this->repository->update($service, $data);
         });
@@ -79,7 +63,7 @@ class ServiceService
 
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
-        return $this->repository->paginate($perPage, $page, $filters);
+        return $this->repository->paginate($perPage, $page, $this->scopeFiltersByHrpOffice($filters));
     }
 
     /**

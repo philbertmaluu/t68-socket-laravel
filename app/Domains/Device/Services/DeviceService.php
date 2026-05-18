@@ -6,11 +6,14 @@ use App\Domains\Device\Models\Device;
 use App\Domains\Device\Models\DeviceToken;
 use App\Domains\Device\Repositories\DeviceRepository;
 use App\Shared\Helpers\TransactionHelper;
+use App\Traits\UserOfficeTrait;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 
 class DeviceService
 {
+    use UserOfficeTrait;
+
     private DeviceRepository $repository;
 
     public function __construct()
@@ -25,7 +28,7 @@ class DeviceService
 
     public function findAll(array $filters = []): Collection
     {
-        return $this->repository->findAll($filters);
+        return $this->repository->findAll($this->scopeFiltersByHrpOffice($filters));
     }
 
     public function findBySerialNumber(string $serialNumber): ?Device
@@ -35,7 +38,9 @@ class DeviceService
 
     public function createDevice(array $data): Device
     {
+        $data = $this->fillOfficeRegionFromHrp($data);
         $this->validateDeviceData($data);
+
         return TransactionHelper::execute(function () use ($data) {
             return $this->repository->create($data);
         });
@@ -43,7 +48,9 @@ class DeviceService
 
     public function updateDevice(Device $device, array $data): Device
     {
+        $data = $this->fillOfficeRegionFromHrp($data);
         $this->validateDeviceData($data, $device);
+
         return TransactionHelper::execute(function () use ($device, $data) {
             if (array_key_exists('password', $data) || array_key_exists('device_key', $data)) {
                 DeviceToken::where('device_id', $device->id)->delete();
@@ -68,7 +75,7 @@ class DeviceService
 
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
-        return $this->repository->paginate($perPage, $page, $filters);
+        return $this->repository->paginate($perPage, $page, $this->scopeFiltersByHrpOffice($filters));
     }
 
     /**
