@@ -54,13 +54,8 @@ trait UserOfficeTrait
     {
         $location = $this->getUserOfficeAndRegionFromHrp();
 
-        if (empty($data['office_id'])) {
-            $data['office_id'] = $location['office_id'];
-        }
-
-        if (empty($data['region_id'])) {
-            $data['region_id'] = $location['region_id'];
-        }
+        $data['office_id'] = $location['office_id'];
+        $data['region_id'] = $location['region_id'];
 
         return $data;
     }
@@ -69,13 +64,8 @@ trait UserOfficeTrait
     {
         $location = $this->getUserOfficeAndRegionFromHrp();
 
-        if (empty($filters['office_id'])) {
-            $filters['office_id'] = $location['office_id'];
-        }
-
-        if (empty($filters['region_id'])) {
-            $filters['region_id'] = $location['region_id'];
-        }
+        $filters['office_id'] = $location['office_id'];
+        $filters['region_id'] = $location['region_id'];
 
         return $filters;
     }

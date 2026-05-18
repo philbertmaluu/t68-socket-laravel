@@ -18,9 +18,6 @@ class StoreServiceRequest extends FormRequest
             'description' => ['nullable', 'string'],
             'estimated_time' => ['required', 'integer', 'min:1'],
             'status' => ['sometimes', 'string', 'in:ACTIVE,INACTIVE'],
-            // Allow nullable/empty - defaults will be set in ServiceService if missing
-            'region_id' => ['nullable', 'string', 'max:50'],
-            'office_id' => ['nullable', 'string', 'max:50'],
         ];
     }
 

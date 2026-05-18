@@ -20,8 +20,6 @@ class UpdateDeviceRequest extends FormRequest
             'name' => ['sometimes', 'string', 'max:200'],
             'type' => ['sometimes', 'string', Rule::in(['kiosk', 'tv'])],
             'status' => ['sometimes', 'string', Rule::in(['online', 'offline', 'maintenance'])],
-            'region_id' => ['sometimes', 'string', 'max:50'],
-            'office_id' => ['sometimes', 'string', 'max:50'],
             'serial_number' => [
                 'sometimes',
                 'string',

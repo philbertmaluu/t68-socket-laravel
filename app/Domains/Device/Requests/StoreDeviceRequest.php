@@ -18,8 +18,6 @@ class StoreDeviceRequest extends FormRequest
             'name' => ['required', 'string', 'max:200'],
             'type' => ['required', 'string', Rule::in(['kiosk', 'tv'])],
             'status' => ['sometimes', 'string', Rule::in(['online', 'offline', 'maintenance'])],
-            'region_id' => ['nullable', 'string', 'max:50'],
-            'office_id' => ['nullable', 'string', 'max:50'],
             'serial_number' => ['required', 'string', 'max:100', 'unique:devices,serial_number'],
             'ip_address' => ['nullable', 'string', 'max:50'],
             'password' => ['nullable', 'string', 'max:255'],

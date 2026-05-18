@@ -22,12 +22,8 @@ class QueueController extends BaseController
     public function index(Request $request): JsonResponse
     {
         try {
-            $officeId = $request->query('office_id');
-            if ($officeId === null || $officeId === '') {
-                $officeId = $this->getUserOfficeAndRegionFromHrp()['office_id'];
-            }
-
-            $queues = $this->service->getAllQueuesPerOffice((string) $officeId);
+            $officeId = (string) $this->getUserOfficeAndRegionFromHrp()['office_id'];
+            $queues = $this->service->getAllQueuesPerOffice($officeId);
             return $this->sendResponse($queues, 'Queues retrieved successfully');
         } catch (\Exception $e) {
             return $this->sendError('Failed to retrieve queues', ['error' => $e->getMessage()], 500);

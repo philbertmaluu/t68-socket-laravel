@@ -20,7 +20,6 @@ class UpdateCounterRequest extends FormRequest
             'service_ids' => ['sometimes', 'array', 'min:1'],
             'service_ids.*' => ['required', 'exists:services,id'],
             'status' => ['sometimes', 'string', 'in:ACTIVE,INACTIVE,MAINTENANCE'],
-            'office_id' => ['sometimes', 'string', 'max:50'],
             'clerk_id' => ['nullable', 'string', 'max:50'],
         ];
     }
