@@ -260,6 +260,17 @@
             <div class="controls">
                 <form method="GET" action="{{ route('logs.view') }}" style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
                     <div class="control-group">
+                        <label for="date">Date:</label>
+                        <select id="date" name="date">
+                            @foreach($availableDates as $dateOption)
+                                <option value="{{ $dateOption }}" {{ $selectedDate === $dateOption ? 'selected' : '' }}>
+                                    {{ $dateOption }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="control-group">
                         <label for="lines">Lines:</label>
                         <input type="number" id="lines" name="lines" value="{{ $lines }}" min="50" max="2000" step="50">
                     </div>
@@ -283,9 +294,12 @@
                 </form>
                 
                 <div style="margin-left: auto; display: flex; gap: 10px;">
-                    <a href="{{ route('logs.download') }}" class="btn btn-secondary">Download Log</a>
-                    <form method="POST" action="{{ route('logs.clear') }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to clear the log file?');">
+                    <a href="{{ route('logs.download', ['date' => $selectedDate]) }}" class="btn btn-secondary">Download Log</a>
+                    <form method="POST" action="{{ route('logs.clear') }}" style="display: inline;" onsubmit="return confirm('Clear the log file for {{ $selectedDate }}?');">
                         @csrf
+                        <input type="hidden" name="date" value="{{ $selectedDate }}">
+                        <input type="hidden" name="lines" value="{{ $lines }}">
+                        <input type="hidden" name="level" value="{{ $level }}">
                         <button type="submit" class="btn btn-danger">Clear Log</button>
                     </form>
                 </div>
@@ -293,9 +307,9 @@
             
             <div class="info">
                 @if($fileExists)
-                    File: {{ $logFile }} | Size: {{ number_format($fileSize / 1024, 2) }} KB | Showing {{ count($logs) }} entries
+                    File: storage/logs/{{ $selectedDate }}.log | Size: {{ number_format($fileSize / 1024, 2) }} KB | Showing {{ count($logs) }} entries
                 @else
-                    Log file not found: {{ $logFile }}
+                    No log file yet for {{ $selectedDate }} (storage/logs/{{ $selectedDate }}.log)
                 @endif
             </div>
         </div>

@@ -250,6 +250,12 @@ php artisan test
 
 ---
 
+## Logging
+
+Application logs use **daily files** named `YYYY-MM-DD.log` in `storage/logs/`. View them at `/logs` with a date picker. See [docs/logging.md](docs/logging.md) for production env vars and deployment steps.
+
+---
+
 ## License
 
 This project is open-sourced software licensed under the [MIT License](https://opensource.org/licenses/MIT).
