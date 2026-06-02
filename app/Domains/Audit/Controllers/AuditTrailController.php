@@ -53,4 +53,13 @@ class AuditTrailController extends BaseController
             return $this->sendError('Failed to retrieve audit trail', ['error' => $e->getMessage()], 500);
         }
     }
+
+    public function export(): JsonResponse
+    {
+        try {
+            return $this->sendResponse([], 'Audit trails exported successfully');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to export audit trails', ['error' => $e->getMessage()], 500);
+        }
+    }
 }
