@@ -14,19 +14,15 @@ class StoreServiceRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:200'],
-            'description' => ['nullable', 'string'],
-            'estimated_time' => ['required', 'integer', 'min:1'],
-            'status' => ['sometimes', 'string', 'in:ACTIVE,INACTIVE'],
+            'service_id' => ['required', 'integer', 'exists:services,id'],
         ];
     }
 
     public function messages(): array
     {
         return [
-            'name.required' => 'Service name is required',
-            'estimated_time.required' => 'Estimated time is required',
-            'estimated_time.min' => 'Estimated time must be at least 1 minute',
+            'service_id.required' => 'Please select a service',
+            'service_id.exists' => 'The selected service does not exist in the catalog',
         ];
     }
 }

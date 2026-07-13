@@ -2,6 +2,7 @@
 
 namespace App\Domains\Service\Repositories;
 
+use App\Domains\Service\Models\OfficeService;
 use App\Domains\Service\Models\Service;
 use App\Shared\Helpers\PaginationHelper;
 use Illuminate\Database\Eloquent\Collection;
@@ -17,6 +18,39 @@ class ServiceRepository
         }
 
         return $query->find($id);
+    }
+
+    /**
+     * List global catalog services (predefined), optionally excluding ones already assigned to an office.
+     *
+     * @return array<int, array{id: mixed, name: string, description: ?string, estimated_time: ?int, status: string}>
+     */
+    public function listCatalog(?string $excludeOfficeId = null): array
+    {
+        $query = Service::query()->where('status', 'ACTIVE')->orderBy('name');
+
+        if ($excludeOfficeId !== null && $excludeOfficeId !== '') {
+            $assignedIds = OfficeService::query()
+                ->where('office_id', $excludeOfficeId)
+                ->pluck('service_id')
+                ->all();
+
+            if ($assignedIds !== []) {
+                $query->whereNotIn('id', $assignedIds);
+            }
+        }
+
+        return $query->get(['id', 'name', 'description', 'estimated_time', 'status', 'swahili_name'])
+            ->map(fn (Service $service) => [
+                'id' => $service->id,
+                'name' => $service->name,
+                'swahili_name' => $service->swahili_name,
+                'description' => $service->description,
+                'estimated_time' => $service->estimated_time,
+                'status' => $service->status,
+            ])
+            ->values()
+            ->all();
     }
 
     public function findAll(array $filters = []): Collection

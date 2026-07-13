@@ -19,6 +19,16 @@ class ServiceController extends BaseController
         $this->service = new ServiceService();
     }
 
+    public function catalog(): JsonResponse
+    {
+        try {
+            $catalog = $this->service->listCatalogForCurrentOffice();
+            return $this->sendResponse($catalog, 'Service catalog retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve service catalog', ['error' => $e->getMessage()], 500);
+        }
+    }
+
     public function index(Request $request): JsonResponse
     {
         try {
@@ -39,6 +49,10 @@ class ServiceController extends BaseController
         try {
             $service = $this->service->createService($request->validated());
             return $this->sendResponse($service, 'Service created successfully', [], 201);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (\RuntimeException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
             return $this->sendError('Failed to create service', ['error' => $e->getMessage()], 500);
         }

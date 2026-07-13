@@ -51,37 +51,59 @@ class ServiceService
     }
 
     /**
-     * Create catalog service + office_services row for the authenticated user's office.
+     * Assign an existing catalog service to the authenticated user's office.
      */
     public function createService(array $data): array
     {
         return TransactionHelper::execute(function () use ($data) {
             $location = $this->getUserOfficeAndRegionFromHrp();
+            $officeId = (string) $location['office_id'];
+            $serviceId = $data['service_id'];
 
-            $catalogPayload = [
-                'name' => $data['name'],
-                'swahili_name' => $data['swahili_name'] ?? null,
-                'description' => $data['description'] ?? null,
-                'estimated_time' => $data['estimated_time'],
-                'status' => $data['status'] ?? 'ACTIVE',
-            ];
+            $service = $this->repository->findById($serviceId);
+            if (!$service) {
+                throw new NotFoundHttpException('Selected service not found in catalog');
+            }
 
-            $service = $this->repository->create($catalogPayload);
+            $existing = $this->officeServiceRepository->findByOfficeAndService($officeId, $service->id, true);
+            if ($existing && $existing->deleted_at === null) {
+                throw new \RuntimeException('This service is already assigned to your office');
+            }
 
-            $assignment = $this->officeServiceRepository->create([
-                'tenant_id' => $service->tenant_id,
-                'office_id' => (string) $location['office_id'],
-                'office_name' => $location['office_name'] ?? null,
-                'region_id' => (string) $location['region_id'],
-                'region_name' => $location['region_name'] ?? null,
-                'service_id' => $service->id,
-                'service_name' => $service->name,
-            ]);
-
-            $assignment->setRelation('service', $service);
+            if ($existing && $existing->trashed()) {
+                $existing->restore();
+                $existing->update([
+                    'office_name' => $location['office_name'] ?? null,
+                    'region_id' => (string) $location['region_id'],
+                    'region_name' => $location['region_name'] ?? null,
+                    'service_name' => $service->name,
+                    'tenant_id' => $service->tenant_id,
+                ]);
+                $assignment = $existing->fresh(['service']);
+            } else {
+                $assignment = $this->officeServiceRepository->create([
+                    'tenant_id' => $service->tenant_id,
+                    'office_id' => $officeId,
+                    'office_name' => $location['office_name'] ?? null,
+                    'region_id' => (string) $location['region_id'],
+                    'region_name' => $location['region_name'] ?? null,
+                    'service_id' => $service->id,
+                    'service_name' => $service->name,
+                ]);
+                $assignment->setRelation('service', $service);
+            }
 
             return $this->officeServiceRepository->toApiRow($assignment);
         });
+    }
+
+    /**
+     * Global predefined catalog for the Add Service picker (excludes already-assigned).
+     */
+    public function listCatalogForCurrentOffice(): array
+    {
+        $location = $this->getUserOfficeAndRegionFromHrp();
+        return $this->repository->listCatalog((string) $location['office_id']);
     }
 
     /**

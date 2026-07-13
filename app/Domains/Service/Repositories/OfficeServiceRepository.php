@@ -18,12 +18,27 @@ class OfficeServiceRepository
         return $query->find($id);
     }
 
-    public function findByOfficeAndService(string $officeId, int|string $serviceId): ?OfficeService
+    public function findByOfficeAndService(string $officeId, int|string $serviceId, bool $withTrashed = false): ?OfficeService
+    {
+        $query = OfficeService::query()
+            ->where('office_id', $officeId)
+            ->where('service_id', $serviceId);
+
+        if ($withTrashed) {
+            $query->withTrashed();
+        }
+
+        return $query->first();
+    }
+
+    public function assignedServiceIdsForOffice(string $officeId): array
     {
         return OfficeService::query()
             ->where('office_id', $officeId)
-            ->where('service_id', $serviceId)
-            ->first();
+            ->pluck('service_id')
+            ->map(fn ($id) => (string) $id)
+            ->values()
+            ->all();
     }
 
     public function existsForOfficeAndService(string $officeId, int|string $serviceId): bool
