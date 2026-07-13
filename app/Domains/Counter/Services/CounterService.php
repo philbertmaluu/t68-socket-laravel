@@ -122,11 +122,13 @@ class CounterService
      * Resolve current authenticated user's assigned counter (active assignment only).
      *
      * Matches `counter_clerk.clerk_id` by common user identifiers to support mixed datasets.
+     * Scoped to the authenticated user's HRPD office.
      *
      * @return array{
      *   id: string|int,
      *   name: string,
      *   office_id: string|int|null,
+     *   office_name: string|null,
      *   status: string|null,
      *   counter_type: array{id: string|int|null, name: string|null, code: string|null},
      *   clerk: array{id: string|int|null, pfno: string|null, name: string|null}
@@ -138,6 +140,10 @@ class CounterService
         if (!$user) {
             throw new AuthenticationException('User not authenticated');
         }
+
+        $location = $this->getUserOfficeAndRegionFromHrp();
+        $officeId = (string) $location['office_id'];
+        $officeName = $location['office_name'] ?? null;
 
         $candidateClerkIds = array_values(array_filter([
             isset($user->id) ? (string) $user->id : null,
@@ -162,10 +168,11 @@ class CounterService
 
         $counter = Counter::query()
             ->with('counterType')
+            ->where('office_id', $officeId)
             ->find($assignment->counter_id);
 
         if (!$counter) {
-            throw new NotFoundHttpException('Assigned counter not found');
+            throw new NotFoundHttpException('Assigned counter not found for your office');
         }
 
         if (strtoupper((string) $counter->status) !== 'ACTIVE') {
@@ -176,6 +183,7 @@ class CounterService
             'id' => $counter->id,
             'name' => $counter->name,
             'office_id' => $counter->office_id,
+            'office_name' => $officeName,
             'status' => $counter->status,
             'counter_type' => [
                 'id' => $counter->counterType?->id,
