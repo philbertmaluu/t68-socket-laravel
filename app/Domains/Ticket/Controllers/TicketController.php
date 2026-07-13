@@ -9,6 +9,7 @@ use App\Http\Controllers\BaseController;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
@@ -135,7 +136,16 @@ class TicketController extends BaseController
             $ticket = $this->service->createTicket($request->validated());
             
             return $this->sendResponse($ticket, 'Ticket created successfully', [], 201);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            Log::error('POST /api/qms/tickets failed', [
+                'payload' => $request->all(),
+                'exception' => get_class($e),
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return $this->sendError('Failed to create ticket', ['error' => $e->getMessage()], 500);
         }
     }

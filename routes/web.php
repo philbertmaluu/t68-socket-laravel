@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\LogViewController;
 use App\Domains\Ticket\Models\Ticket;
-use App\Services\QueueService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -24,14 +23,14 @@ Route::prefix('test/tickets')->group(function () {
         $ticket = Ticket::create([
             'ticket_number' => 'TEST-' . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT),
             'service_type' => $request->input('service_type', 'Test Service'),
-            'queue_id' => $request->input('queue_id', 'test-queue-1'),
+            'queue_id' => $request->input('queue_id', '1'),
             'member_name' => $request->input('member_name', 'Test Customer'),
             'member_number' => $request->input('member_number', 'M' . str_pad(rand(1, 999999), 6, '0', STR_PAD_LEFT)),
-            'phone_number' => $request->input('phone_number', '+1234567890'),
+            'phone_number' => $request->input('phone_number', '+255748304649'),
             'estimated_time' => $request->input('estimated_time', 300),
             'priority' => $request->boolean('priority', false),
             'status' => 'waiting',
-            'office_id' => $request->input('office_id', 'office-1'),
+            'office_id' => $request->input('office_id', '1'),
         ]);
 
         return response()->json([

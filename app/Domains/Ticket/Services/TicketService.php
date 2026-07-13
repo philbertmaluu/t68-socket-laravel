@@ -67,7 +67,6 @@ class TicketService
      */
     public function createTicket(array $data): Ticket
     {
-
         return TransactionHelper::execute(function () use ($data) {
             // Idempotency: if the same request (phone + service + office) was created in the last 30 seconds, return that ticket (one ticket = one SMS).
             $existing = $this->repository->findRecentDuplicate(
@@ -81,8 +80,13 @@ class TicketService
             }
             // Get service information
             $service = $this->serviceService->findById($data['service_type_id']);
-            
+
             if (!$service) {
+                Log::error('Ticket create: service not found', [
+                    'service_type_id' => $data['service_type_id'] ?? null,
+                    'office_id' => $data['office_id'] ?? null,
+                    'phone_number' => $data['phone_number'] ?? null,
+                ]);
                 throw new \Exception("Service with ID {$data['service_type_id']} not found");
             }
 
@@ -153,6 +157,10 @@ class TicketService
         }
         
         if (!$counter) {
+            Log::error('Ticket create: no active counter found', [
+                'service_id' => $serviceId,
+                'office_id' => $officeId,
+            ]);
             throw new \Exception("No active counter found in office {$officeId} to serve service {$serviceId}");
         }
         
