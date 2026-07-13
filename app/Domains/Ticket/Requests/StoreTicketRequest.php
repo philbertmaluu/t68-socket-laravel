@@ -30,6 +30,7 @@ class StoreTicketRequest extends FormRequest
             'phone_number' => ['required', 'string', 'max:20'],
             'office_id' => ['required', 'string', 'max:50'],
             'locale' => ['required', 'string', 'max:10'],
+            'created_by' => ['nullable', 'string', 'max:50'],
         ];
     }
 

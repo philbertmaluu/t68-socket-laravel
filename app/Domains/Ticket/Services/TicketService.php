@@ -2,9 +2,11 @@
 
 namespace App\Domains\Ticket\Services;
 
+use App\Domains\Authentication\Models\User;
 use App\Domains\Counter\Models\CounterClerk;
 use App\Domains\Counter\Models\Counter;
 use App\Domains\Counter\Services\CounterService;
+use App\Domains\Device\Models\DeviceToken;
 use App\Domains\Service\Models\Service;
 use App\Domains\Service\Services\ServiceService;
 use App\Domains\Ticket\Models\Ticket;
@@ -121,6 +123,10 @@ class TicketService
                 'estimated_time' => $service->estimated_time,
                 'status' => 'waiting',
                 'priority' => false,
+                'created_by' => $this->resolveTicketCreatedBy(
+                    $data['created_by'] ?? null,
+                    (string) $data['office_id']
+                ),
             ];
 
             // Set tenant_id if available from service
@@ -236,12 +242,16 @@ class TicketService
     public function callNextTicket(): array
     {
         return TransactionHelper::execute(function () {
-             $user = Auth::guard('sanctum')->user();
-             if (!$user || !isset($user->id)) {
+            $user = Auth::guard('sanctum')->user();
+            if (!$user || !isset($user->id)) {
                 throw new AuthenticationException('User not authenticated');
-             }
+            }
 
-            $activeTicket = $this->findActiveTicketForClerk((string) $user->id);
+            $location = $this->getUserOfficeAndRegionFromHrp();
+            $officeId = (string) $location['office_id'];
+            $clerkIds = $this->resolveClerkIdentityCandidates($user);
+
+            $activeTicket = $this->findActiveTicketForClerk($clerkIds, $officeId);
             if ($activeTicket) {
                 throw new UnprocessableEntityHttpException(
                     'Complete the current ticket before calling the next one.'
@@ -249,7 +259,7 @@ class TicketService
             }
 
             $counterAssignment = CounterClerk::query()
-                ->where('clerk_id', (string) $user->id)
+                ->whereIn('clerk_id', $clerkIds)
                 ->where('is_active', true)
                 ->latest('assigned_at')
                 ->first();
@@ -260,6 +270,7 @@ class TicketService
 
             $counter = Counter::query()
                 ->with('counterType')
+                ->where('office_id', $officeId)
                 ->find($counterAssignment->counter_id);
 
             if (!$counter) {
@@ -276,6 +287,7 @@ class TicketService
 
             $ticket = Ticket::query()
                 ->where('queue_id', (string) $queue->id)
+                ->where('office_id', $officeId)
                 ->where('status', 'waiting')
                 ->orderBy('queue_position', 'asc')
                 ->orderBy('created_at', 'asc')
@@ -299,7 +311,7 @@ class TicketService
     }
 
     /**
-     * Get the authenticated clerk's incomplete ticket (called or serving).
+     * Get the authenticated clerk's incomplete ticket (called or serving) for their HRPD office.
      */
     public function getActiveClerkTicket(): ?array
     {
@@ -308,7 +320,11 @@ class TicketService
             throw new AuthenticationException('User not authenticated');
         }
 
-        $ticket = $this->findActiveTicketForClerk((string) $user->id);
+        $location = $this->getUserOfficeAndRegionFromHrp();
+        $officeId = (string) $location['office_id'];
+        $clerkIds = $this->resolveClerkIdentityCandidates($user);
+
+        $ticket = $this->findActiveTicketForClerk($clerkIds, $officeId);
         if (!$ticket) {
             return null;
         }
@@ -317,12 +333,13 @@ class TicketService
         if ($ticket->counter_id) {
             $counter = Counter::query()
                 ->with('counterType')
+                ->where('office_id', $officeId)
                 ->find($ticket->counter_id);
         }
 
         if (!$counter) {
             $counterAssignment = CounterClerk::query()
-                ->where('clerk_id', (string) $user->id)
+                ->whereIn('clerk_id', $clerkIds)
                 ->where('is_active', true)
                 ->latest('assigned_at')
                 ->first();
@@ -330,6 +347,7 @@ class TicketService
             if ($counterAssignment) {
                 $counter = Counter::query()
                     ->with('counterType')
+                    ->where('office_id', $officeId)
                     ->find($counterAssignment->counter_id);
             }
         }
@@ -337,14 +355,77 @@ class TicketService
         return $this->formatClerkTicketPayload($ticket, $counter);
     }
 
-    private function findActiveTicketForClerk(string $clerkId): ?Ticket
+    /**
+     * Resolve clerk identity candidates used across counter assignments and tickets.
+     *
+     * @return list<string>
+     */
+    private function resolveClerkIdentityCandidates(object $user): array
     {
+        return array_values(array_filter([
+            isset($user->id) ? (string) $user->id : null,
+            isset($user->pfno) ? (string) $user->pfno : null,
+            isset($user->user_id) ? (string) $user->user_id : null,
+            isset($user->username) ? (string) $user->username : null,
+            isset($user->email) ? (string) $user->email : null,
+        ]));
+    }
+
+    /**
+     * Find incomplete ticket for this clerk in the given office.
+     *
+     * @param list<string> $clerkIds
+     */
+    private function findActiveTicketForClerk(array $clerkIds, string $officeId): ?Ticket
+    {
+        if ($clerkIds === [] || $officeId === '') {
+            return null;
+        }
+
         return Ticket::query()
-            ->where('clerk_id', $clerkId)
+            ->whereIn('clerk_id', $clerkIds)
+            ->where('office_id', $officeId)
             ->whereIn('status', ['called', 'serving'])
             ->orderByDesc('called_at')
             ->orderByDesc('updated_at')
             ->first();
+    }
+
+    /**
+     * Set created_by from sanctum user, authenticated device, explicit value, or kiosk office fallback.
+     */
+    private function resolveTicketCreatedBy(mixed $explicit, string $officeId): string
+    {
+        if (is_string($explicit) && trim($explicit) !== '') {
+            return trim($explicit);
+        }
+
+        $user = Auth::guard('sanctum')->user();
+        if ($user instanceof User && isset($user->id)) {
+            return (string) $user->id;
+        }
+
+        $device = request()->attributes->get('device');
+        if (is_object($device) && isset($device->id)) {
+            return (string) $device->id;
+        }
+
+        $token = request()->header('X-Device-Token');
+        if (!$token) {
+            $authHeader = request()->header('Authorization');
+            if (is_string($authHeader) && str_starts_with($authHeader, 'Bearer ')) {
+                $token = substr($authHeader, 7);
+            }
+        }
+
+        if (is_string($token) && $token !== '') {
+            $tokenModel = DeviceToken::query()->where('token', $token)->first();
+            if ($tokenModel && !$tokenModel->isExpired() && $tokenModel->device) {
+                return (string) $tokenModel->device->id;
+            }
+        }
+
+        return 'kiosk:' . $officeId;
     }
 
     private function formatClerkTicketPayload(Ticket $ticket, ?Counter $counter): array
