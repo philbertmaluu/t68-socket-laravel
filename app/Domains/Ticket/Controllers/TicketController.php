@@ -146,7 +146,8 @@ class TicketController extends BaseController
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return $this->sendError('Failed to create ticket', ['error' => $e->getMessage()], 500);
+            // Surface the real reason (e.g. no active counter) so kiosk can show it.
+            return $this->sendError($e->getMessage() ?: 'Failed to create ticket', ['error' => $e->getMessage()], 500);
         }
     }
 
