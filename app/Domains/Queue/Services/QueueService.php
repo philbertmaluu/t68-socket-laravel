@@ -3,11 +3,14 @@
 namespace App\Domains\Queue\Services;
 
 use App\Domains\Queue\Models\Queue;
+use App\Traits\UserOfficeTrait;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class QueueService
 {
+    use UserOfficeTrait;
+
     /**
      * Get queues, optionally filtered by office_id.
      * - If office_id is provided: returns queues for that office.
@@ -84,9 +87,16 @@ class QueueService
             ];
         })->values();
 
+        $queues = $this->withHrpOfficeNames($queues);
+        $officeNames = $queues
+            ->filter(fn ($queue) => !empty($queue['office_id']) && !empty($queue['office_name']))
+            ->mapWithKeys(fn ($queue) => [(string) $queue['office_id'] => (string) $queue['office_name']])
+            ->all();
+
         if ($officeId) {
             return [
                 'office_id' => $officeId,
+                'office_name' => $officeNames[$officeId] ?? null,
                 'total_queues' => $queues->count(),
                 'queues' => $queues->all(),
             ];
@@ -94,9 +104,10 @@ class QueueService
 
         $offices = $queues
             ->groupBy('office_id')
-            ->map(function (Collection $officeQueues, string $id) {
+            ->map(function (Collection $officeQueues, string $id) use ($officeNames) {
                 return [
                     'office_id' => $id,
+                    'office_name' => $officeNames[$id] ?? null,
                     'total_queues' => $officeQueues->count(),
                     'queues' => $officeQueues->values()->all(),
                 ];
@@ -123,4 +134,3 @@ class QueueService
         };
     }
 }
-
