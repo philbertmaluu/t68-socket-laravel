@@ -172,7 +172,7 @@ class CounterService
             ->find($assignment->counter_id);
 
         if (!$counter) {
-            throw new NotFoundHttpException('Assigned counter not found for your office');
+            throw new NotFoundHttpException('You have not been assigned to any counter');
         }
 
         if (strtoupper((string) $counter->status) !== 'ACTIVE') {
