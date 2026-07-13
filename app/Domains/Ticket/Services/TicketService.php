@@ -355,6 +355,8 @@ class TicketService
             'service_type' => $ticket->service_type,
             'estimated_time' => $ticket->estimated_time,
             'status' => $ticket->status,
+            'called_at' => $ticket->called_at,
+            'serving_started_at' => $ticket->serving_started_at,
             'counter' => [
                 'id' => $counter?->id,
                 'name' => $counter?->name,
@@ -752,6 +754,40 @@ class TicketService
     public function updateTicket(Ticket $ticket, array $data): Ticket
     {
         return TransactionHelper::execute(function () use ($ticket, $data) {
+            $newStatus = isset($data['status']) ? strtolower((string) $data['status']) : null;
+
+            if ($newStatus === 'serving') {
+                if (empty($data['serving_started_at'])) {
+                    $data['serving_started_at'] = now();
+                }
+            }
+
+            if ($newStatus === 'completed') {
+                if (empty($data['completed_at'])) {
+                    $data['completed_at'] = now();
+                }
+
+                if (!isset($data['duration_seconds']) || $data['duration_seconds'] === null) {
+                    $startedAt = $ticket->serving_started_at
+                        ?? (!empty($data['serving_started_at']) ? $data['serving_started_at'] : null);
+
+                    if ($startedAt) {
+                        $started = $startedAt instanceof \DateTimeInterface
+                            ? \Carbon\Carbon::instance($startedAt)
+                            : \Carbon\Carbon::parse($startedAt);
+                        $ended = !empty($data['completed_at'])
+                            ? \Carbon\Carbon::parse($data['completed_at'])
+                            : now();
+                        $data['duration_seconds'] = max(0, $ended->diffInSeconds($started));
+                    }
+                }
+
+                // If Serve was skipped, still stamp serving start when completing.
+                if (empty($ticket->serving_started_at) && empty($data['serving_started_at'])) {
+                    $data['serving_started_at'] = $ticket->called_at ?? now();
+                }
+            }
+
             return $this->repository->update($ticket, $data);
         });
     }

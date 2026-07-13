@@ -28,6 +28,11 @@ class UpdateTicketRequest extends FormRequest
             'counter_id' => ['nullable', 'string', 'max:50'],
             'clerk_id' => ['nullable', 'string', 'max:50'],
             'office_id' => ['sometimes', 'string', 'max:50'],
+            'called_at' => ['nullable', 'date'],
+            'serving_started_at' => ['nullable', 'date'],
+            'completed_at' => ['nullable', 'date'],
+            'duration_seconds' => ['nullable', 'integer', 'min:0'],
+            'transferred_to_counter_id' => ['nullable', 'string', 'max:50'],
         ];
     }
 }
