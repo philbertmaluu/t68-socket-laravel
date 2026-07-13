@@ -63,7 +63,10 @@ class ServiceService
 
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
-        return $this->repository->paginate($perPage, $page, $this->scopeFiltersByHrpOffice($filters));
+        $result = $this->repository->paginate($perPage, $page, $this->scopeFiltersByHrpOffice($filters));
+        $result['data'] = $this->withHrpOfficeNames($result['data']);
+
+        return $result;
     }
 
     /**

@@ -84,4 +84,63 @@ trait UserOfficeTrait
 
         return $filters;
     }
+
+    /**
+     * Resolve office_id => office_name from HRPD for a set of office IDs.
+     *
+     * @param  array<int, string|int|null>  $officeIds
+     * @return array<string, string>
+     */
+    protected function resolveHrpOfficeNamesByIds(array $officeIds): array
+    {
+        $ids = collect($officeIds)
+            ->filter(fn ($id) => $id !== null && trim((string) $id) !== '')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return DB::table('hrpd.office')
+            ->whereIn('office_id', $ids)
+            ->select(['office_id', 'office_name'])
+            ->get()
+            ->mapWithKeys(fn ($row) => [
+                (string) $row->office_id => (string) ($row->office_name ?? ''),
+            ])
+            ->filter(fn (string $name) => $name !== '')
+            ->all();
+    }
+
+    /**
+     * Attach office_name (from HRPD) onto each item that has office_id.
+     *
+     * @param  iterable<mixed>  $items
+     * @return \Illuminate\Support\Collection<int, mixed>
+     */
+    protected function withHrpOfficeNames(iterable $items): \Illuminate\Support\Collection
+    {
+        $collection = collect($items);
+        $namesById = $this->resolveHrpOfficeNamesByIds(
+            $collection->pluck('office_id')->all()
+        );
+
+        return $collection->map(function ($item) use ($namesById) {
+            $officeId = is_object($item)
+                ? (string) ($item->office_id ?? '')
+                : (string) ($item['office_id'] ?? '');
+            $officeName = $namesById[$officeId] ?? null;
+
+            if (is_object($item)) {
+                $item->setAttribute('office_name', $officeName);
+                return $item;
+            }
+
+            $item['office_name'] = $officeName;
+            return $item;
+        })->values();
+    }
 }
