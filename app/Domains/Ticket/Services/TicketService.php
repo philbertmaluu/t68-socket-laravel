@@ -10,6 +10,7 @@ use App\Domains\Service\Services\ServiceService;
 use App\Domains\Ticket\Models\Ticket;
 use App\Domains\Ticket\Repositories\TicketRepository;
 use App\Shared\Helpers\TransactionHelper;
+use App\Traits\UserOfficeTrait;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,8 @@ use Symfony\Component\HttpKernel\Exception\UnprocessableEntityHttpException;
 
 class TicketService
 {
+    use UserOfficeTrait;
+
     private TicketRepository $repository;
     private ServiceService $serviceService;
     private CounterService $counterService;
@@ -297,13 +300,15 @@ class TicketService
 
     public function getClerksTickets(array $filters = []): array
     {
-
-        // ill add office id filter next time  here 
         return TransactionHelper::execute(function () use ($filters) {
             $user = Auth::guard('sanctum')->user();
             if (!$user || !isset($user->id)) {
                 throw new AuthenticationException('User not authenticated');
             }
+
+            $location = $this->getUserOfficeAndRegionFromHrp();
+            $officeId = (string) $location['office_id'];
+            $officeName = $location['office_name'] ?? null;
 
             $counterAssignment = CounterClerk::query()
                 ->where('clerk_id', (string) $user->id)
@@ -323,6 +328,7 @@ class TicketService
             if (!$queueId) {
                 $queue = DB::table('queues')
                     ->where('counter_id', $counterId)
+                    ->where('office_id', $officeId)
                     ->first();
 
                 if (!$queue) {
@@ -334,7 +340,9 @@ class TicketService
             $clerkId = (string) $user->id;
             $scope = strtolower((string) ($filters['scope'] ?? 'all'));
 
-            $ticketsQuery = Ticket::query()->where('queue_id', $queueId);
+            $ticketsQuery = Ticket::query()
+                ->where('office_id', $officeId)
+                ->where('queue_id', $queueId);
 
             // Waiting tickets are counter-level (no clerk yet), history is clerk-level.
             if ($scope === 'waiting') {
@@ -392,9 +400,14 @@ class TicketService
                     'completed_at',
                     'duration_seconds',
                     'transferred_to_counter_id',
+                    'office_id',
                     'created_at',
                     'updated_at',
                 ]);
+
+            $tickets->each(function (Ticket $ticket) use ($officeName) {
+                $ticket->setAttribute('office_name', $officeName);
+            });
 
             $statusCounts = (clone $ticketsQuery)
                 ->selectRaw('LOWER(status) as status, COUNT(*) as total')
@@ -413,6 +426,8 @@ class TicketService
                 'tickets' => $tickets,
                 'summary' => [
                     'scope' => $scope,
+                    'office_id' => $officeId,
+                    'office_name' => $officeName,
                     'queue_id' => $queueId,
                     'counter_id' => $counterId,
                     'clerk_id' => $clerkId,
