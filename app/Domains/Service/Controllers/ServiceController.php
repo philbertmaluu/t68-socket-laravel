@@ -8,6 +8,7 @@ use App\Domains\Service\Services\ServiceService;
 use App\Http\Controllers\BaseController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class ServiceController extends BaseController
 {
@@ -23,7 +24,7 @@ class ServiceController extends BaseController
         try {
             $perPage = (int) $request->get('per_page', 15);
             $page = (int) $request->get('page', 1);
-            $filters = $request->only(['status', 'region_id', 'office_id']);
+            $filters = $request->only(['status', 'region_id']);
 
             $result = $this->service->paginate($perPage, $page, $filters);
 
@@ -46,7 +47,7 @@ class ServiceController extends BaseController
     public function show(string $id): JsonResponse
     {
         try {
-            $service = $this->service->findById($id);
+            $service = $this->service->findAssignedForCurrentOffice($id);
 
             if (!$service) {
                 return $this->sendError('Service not found', [], 404);
@@ -61,14 +62,16 @@ class ServiceController extends BaseController
     public function update(UpdateServiceRequest $request, string $id): JsonResponse
     {
         try {
-            $service = $this->service->findById($id);
+            $catalog = $this->service->findById($id);
 
-            if (!$service) {
+            if (!$catalog) {
                 return $this->sendError('Service not found', [], 404);
             }
 
-            $updated = $this->service->updateService($service, $request->validated());
+            $updated = $this->service->updateService($catalog, $request->validated());
             return $this->sendResponse($updated, 'Service updated successfully');
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
         } catch (\Exception $e) {
             return $this->sendError('Failed to update service', ['error' => $e->getMessage()], 500);
         }
@@ -77,13 +80,17 @@ class ServiceController extends BaseController
     public function destroy(string $id): JsonResponse
     {
         try {
-            $service = $this->service->findById($id);
+            $catalog = $this->service->findById($id);
 
-            if (!$service) {
+            if (!$catalog) {
                 return $this->sendError('Service not found', [], 404);
             }
 
-            $this->service->deleteService($service);
+            $deleted = $this->service->deleteService($catalog);
+            if (!$deleted) {
+                return $this->sendError('Service is not assigned to your office', [], 404);
+            }
+
             return $this->sendResponse(null, 'Service deleted successfully');
         } catch (\Exception $e) {
             return $this->sendError('Failed to delete service', ['error' => $e->getMessage()], 500);

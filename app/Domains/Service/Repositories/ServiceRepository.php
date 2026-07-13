@@ -11,11 +11,11 @@ class ServiceRepository
     public function findById(int|string $id, bool $withTrashed = false): ?Service
     {
         $query = Service::query();
-        
+
         if ($withTrashed) {
             $query->withTrashed();
         }
-        
+
         return $query->find($id);
     }
 
@@ -25,14 +25,6 @@ class ServiceRepository
 
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
-        }
-
-        if (isset($filters['region_id'])) {
-            $query->where('region_id', $filters['region_id']);
-        }
-
-        if (isset($filters['office_id'])) {
-            $query->where('office_id', $filters['office_id']);
         }
 
         if (isset($filters['with_trashed']) && $filters['with_trashed']) {
@@ -68,6 +60,9 @@ class ServiceRepository
         return $service->restore();
     }
 
+    /**
+     * Paginate global catalog (no office filter). Prefer OfficeServiceRepository for admin UI.
+     */
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
         [$page, $perPage] = PaginationHelper::validateParams($page, $perPage);
@@ -75,14 +70,6 @@ class ServiceRepository
 
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
-        }
-
-        if (isset($filters['region_id'])) {
-            $query->where('region_id', $filters['region_id']);
-        }
-
-        if (isset($filters['office_id'])) {
-            $query->where('office_id', $filters['office_id']);
         }
 
         if (isset($filters['with_trashed']) && $filters['with_trashed']) {
@@ -93,30 +80,6 @@ class ServiceRepository
 
         $total = $query->count();
         $items = $query->skip(($page - 1) * $perPage)->take($perPage)->get();
-        $meta = PaginationHelper::calculateMeta($total, $perPage, $page);
-
-        return [
-            'data' => $items,
-            'meta' => $meta,
-        ];
-    }
-
-    /**
-     * List active services for public/kiosk (no auth). Optionally filter by office_id.
-     * Bypasses tenant scope so kiosk can list by office without Sanctum.
-     */
-    public function listPublic(int $perPage = 500, int $page = 1, ?string $officeId = null): array
-    {
-        [$page, $perPage] = PaginationHelper::validateParams($page, $perPage);
-        $query = Service::withoutTenant()
-            ->where('status', 'ACTIVE');
-
-        if ($officeId !== null && $officeId !== '') {
-            $query->where('office_id', $officeId);
-        }
-
-        $total = $query->count();
-        $items = $query->orderBy('name')->skip(($page - 1) * $perPage)->take($perPage)->get();
         $meta = PaginationHelper::calculateMeta($total, $perPage, $page);
 
         return [

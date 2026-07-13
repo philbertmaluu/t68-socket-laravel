@@ -26,12 +26,14 @@ trait UserOfficeTrait
 
         $hrpdOffice = DB::table('hrpd.vw_employee_details as employee')
             ->join('hrpd.office as office', 'office.office_id', '=', 'employee.office_id')
+            ->leftJoin('hrpd.region as region', 'region.region_id', '=', 'office.region_id')
             ->where('employee.pfno', $pfno)
             ->select([
                 'office.office_id',
                 'office.region_id',
                 'office.office_code',
                 'employee.office_name',
+                'region.region_name',
             ])
             ->first();
 
@@ -47,6 +49,7 @@ trait UserOfficeTrait
             'region_id' => (string) $hrpdOffice->region_id,
             'office_code' => $hrpdOffice->office_code ?? null,
             'office_name' => $hrpdOffice->office_name ?? null,
+            'region_name' => $hrpdOffice->region_name ?? null,
         ];
     }
 

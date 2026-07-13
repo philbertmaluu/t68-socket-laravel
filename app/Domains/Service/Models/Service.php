@@ -27,8 +27,6 @@ class Service extends Model
         'description',
         'estimated_time',
         'status',
-        'region_id',
-        'office_id',
         'created_by',
         'updated_by',
         'deleted_by',
@@ -100,5 +98,10 @@ class Service extends Model
             'id',
             'id'
         )->withPivot('office_id')->withTimestamps();
+    }
+
+    public function officeAssignments(): HasMany
+    {
+        return $this->hasMany(OfficeService::class, 'service_id', 'id');
     }
 }

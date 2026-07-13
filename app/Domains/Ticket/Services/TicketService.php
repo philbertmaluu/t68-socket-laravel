@@ -81,7 +81,7 @@ class TicketService
             if ($existing !== null) {
                 return $existing;
             }
-            // Get service information
+            // Get service information (must be assigned to this office via office_services)
             $service = $this->serviceService->findById($data['service_type_id']);
 
             if (!$service) {
@@ -91,6 +91,14 @@ class TicketService
                     'phone_number' => $data['phone_number'] ?? null,
                 ]);
                 throw new \Exception("Service with ID {$data['service_type_id']} not found");
+            }
+
+            if (!$this->serviceService->isServiceAssignedToOffice($data['service_type_id'], (string) $data['office_id'])) {
+                Log::error('Ticket create: service not assigned to office', [
+                    'service_type_id' => $data['service_type_id'] ?? null,
+                    'office_id' => $data['office_id'] ?? null,
+                ]);
+                throw new \Exception("Service with ID {$data['service_type_id']} is not available for office {$data['office_id']}");
             }
 
             // Find a counter that can serve this service (or any active counter in the office)

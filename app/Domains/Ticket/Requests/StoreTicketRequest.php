@@ -18,7 +18,15 @@ class StoreTicketRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'service_type_id' => ['required', 'string', 'max:50', 'exists:services,id'],
+            'service_type_id' => [
+                'required',
+                'string',
+                'max:50',
+                Rule::exists('office_services', 'service_id')->where(function ($query) {
+                    $query->where('office_id', (string) $this->input('office_id'))
+                        ->whereNull('deleted_at');
+                }),
+            ],
             'phone_number' => ['required', 'string', 'max:20'],
             'office_id' => ['required', 'string', 'max:50'],
             'locale' => ['required', 'string', 'max:10'],
@@ -29,7 +37,7 @@ class StoreTicketRequest extends FormRequest
     {
         return [
             'service_type_id.required' => 'Service type ID is required',
-            'service_type_id.exists' => 'The selected service type does not exist',
+            'service_type_id.exists' => 'The selected service is not available for this office',
             'phone_number.required' => 'Phone number is required',
             'office_id.required' => 'Office ID is required',
             'locale.required' => 'Locale is required',
