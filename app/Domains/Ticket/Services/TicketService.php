@@ -241,6 +241,13 @@ class TicketService
                 throw new AuthenticationException('User not authenticated');
              }
 
+            $activeTicket = $this->findActiveTicketForClerk((string) $user->id);
+            if ($activeTicket) {
+                throw new UnprocessableEntityHttpException(
+                    'Complete the current ticket before calling the next one.'
+                );
+            }
+
             $counterAssignment = CounterClerk::query()
                 ->where('clerk_id', (string) $user->id)
                 ->where('is_active', true)
@@ -287,22 +294,77 @@ class TicketService
 
             $ticket = $ticket->fresh();
 
-            return [
-                'id' => $ticket->id,
-                'ticket_number' => $ticket->ticket_number,
-                'service_type' => $ticket->service_type,
-                'estimated_time' => $ticket->estimated_time,
-                'counter' => [
-                    'id' => $counter->id,
-                    'name' => $counter->name,
-                    'counter_type' => [
-                        'id' => $counter->counterType?->id,
-                        'name' => $counter->counterType?->name,
-                        'code' => $counter->counterType?->code,
-                    ],
-                ],
-            ];
+            return $this->formatClerkTicketPayload($ticket, $counter);
         });
+    }
+
+    /**
+     * Get the authenticated clerk's incomplete ticket (called or serving).
+     */
+    public function getActiveClerkTicket(): ?array
+    {
+        $user = Auth::guard('sanctum')->user();
+        if (!$user || !isset($user->id)) {
+            throw new AuthenticationException('User not authenticated');
+        }
+
+        $ticket = $this->findActiveTicketForClerk((string) $user->id);
+        if (!$ticket) {
+            return null;
+        }
+
+        $counter = null;
+        if ($ticket->counter_id) {
+            $counter = Counter::query()
+                ->with('counterType')
+                ->find($ticket->counter_id);
+        }
+
+        if (!$counter) {
+            $counterAssignment = CounterClerk::query()
+                ->where('clerk_id', (string) $user->id)
+                ->where('is_active', true)
+                ->latest('assigned_at')
+                ->first();
+
+            if ($counterAssignment) {
+                $counter = Counter::query()
+                    ->with('counterType')
+                    ->find($counterAssignment->counter_id);
+            }
+        }
+
+        return $this->formatClerkTicketPayload($ticket, $counter);
+    }
+
+    private function findActiveTicketForClerk(string $clerkId): ?Ticket
+    {
+        return Ticket::query()
+            ->where('clerk_id', $clerkId)
+            ->whereIn('status', ['called', 'serving'])
+            ->orderByDesc('called_at')
+            ->orderByDesc('updated_at')
+            ->first();
+    }
+
+    private function formatClerkTicketPayload(Ticket $ticket, ?Counter $counter): array
+    {
+        return [
+            'id' => $ticket->id,
+            'ticket_number' => $ticket->ticket_number,
+            'service_type' => $ticket->service_type,
+            'estimated_time' => $ticket->estimated_time,
+            'status' => $ticket->status,
+            'counter' => [
+                'id' => $counter?->id,
+                'name' => $counter?->name,
+                'counter_type' => [
+                    'id' => $counter?->counterType?->id,
+                    'name' => $counter?->counterType?->name,
+                    'code' => $counter?->counterType?->code,
+                ],
+            ],
+        ];
     }
 
 

@@ -234,5 +234,27 @@ class TicketController extends BaseController
         }
     }
 
+    /**
+     * Return the clerk's current incomplete ticket (called/serving), if any.
+     */
+    public function activeTicket(): JsonResponse
+    {
+        try {
+            $ticket = $this->service->getActiveClerkTicket();
+            return $this->sendResponse(
+                $ticket,
+                $ticket ? 'Active ticket retrieved successfully' : 'No active ticket'
+            );
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve active ticket', ['error' => $e->getMessage()], 500);
+        }
+    }
+
 }
 
