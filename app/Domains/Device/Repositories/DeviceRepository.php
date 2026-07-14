@@ -59,12 +59,32 @@ class DeviceRepository
 
     public function findByDeviceKey(string $deviceKey): ?Device
     {
-        return Device::where('device_key', $deviceKey)->first();
+        $normalized = strtoupper(trim($deviceKey));
+        if ($normalized === '') {
+            return null;
+        }
+
+        // Exact match first (fast path — keys are stored uppercase).
+        $device = Device::where('device_key', $normalized)->first();
+        if ($device) {
+            return $device;
+        }
+
+        // Fallback for mixed-case / whitespace-polluted legacy rows.
+        return Device::query()
+            ->whereRaw('UPPER(TRIM(device_key)) = ?', [$normalized])
+            ->first();
     }
 
     public function findByName(string $name): ?Device
     {
-        return Device::where('name', $name)->first();
+        $trimmed = trim($name);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        return Device::where('name', $trimmed)->first()
+            ?? Device::whereRaw('LOWER(TRIM(name)) = ?', [strtolower($trimmed)])->first();
     }
 
     public function create(array $data): Device

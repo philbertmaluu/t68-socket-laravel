@@ -2,6 +2,8 @@
 
 namespace App\Domains\Device\Requests;
 
+use App\Domains\Device\Services\DeviceAuthAuditor;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
 class DeviceAuthenticateRequest extends FormRequest
@@ -39,5 +41,17 @@ class DeviceAuthenticateRequest extends FormRequest
                 $validator->errors()->add('name', 'Provide either device_key or both name and password.');
             }
         });
+    }
+
+    protected function failedValidation(Validator $validator): void
+    {
+        DeviceAuthAuditor::failed(
+            $this->only(['device_key', 'name', 'password']),
+            'Validation failed',
+            null,
+            ['validation_errors' => $validator->errors()->toArray()],
+        );
+
+        parent::failedValidation($validator);
     }
 }

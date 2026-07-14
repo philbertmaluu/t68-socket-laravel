@@ -82,53 +82,88 @@ class DeviceService
     /**
      * Authenticate device by device_key or by name + password.
      * Returns device and token on success; throws on failure.
+     * Every attempt (success or failure) is written to audit_trails.
      *
      * @return array{device: Device, token: string}
      * @throws \Exception
      */
     public function authenticateDevice(array $credentials): array
     {
+        $credentials = $this->normalizeAuthCredentials($credentials);
         $device = null;
 
-        if (!empty($credentials['device_key'])) {
-            $device = $this->repository->findByDeviceKey($credentials['device_key']);
-            if (!$device) {
-                throw new \Exception('Invalid device key');
+        try {
+            if (!empty($credentials['device_key'])) {
+                $device = $this->repository->findByDeviceKey($credentials['device_key']);
+                if (!$device) {
+                    throw new \Exception('Invalid device key');
+                }
+            } elseif (!empty($credentials['name']) && array_key_exists('password', $credentials)) {
+                $device = $this->repository->findByName($credentials['name']);
+                if (!$device) {
+                    throw new \Exception('Invalid device name or password');
+                }
+                $password = $credentials['password'] ?? '';
+                $storedPlain = $device->decrypted_password;
+                if ($storedPlain === null || $password !== $storedPlain) {
+                    throw new \Exception('Invalid device name or password');
+                }
+            } else {
+                throw new \Exception('Provide either device_key or name and password');
             }
-        } elseif (!empty($credentials['name']) && array_key_exists('password', $credentials)) {
-            $device = $this->repository->findByName($credentials['name']);
-            if (!$device) {
-                throw new \Exception('Invalid device name or password');
+
+            if ($device->status === Device::STATUS_MAINTENANCE) {
+                throw new \Exception('Device is in maintenance and cannot authenticate');
             }
-            $password = $credentials['password'] ?? '';
-            $storedPlain = $device->decrypted_password;
-            if ($storedPlain === null || $password !== $storedPlain) {
-                throw new \Exception('Invalid device name or password');
+
+            $result = TransactionHelper::execute(function () use ($device) {
+                // One token per device: delete existing tokens for this device
+                DeviceToken::where('device_id', $device->id)->delete();
+
+                $expiresAt = now()->addDays(30);
+                $tokenModel = DeviceToken::create([
+                    'device_id' => $device->id,
+                    'token' => Str::random(64),
+                    'expires_at' => $expiresAt,
+                ]);
+
+                return [
+                    'device' => $device,
+                    'token' => $tokenModel->token,
+                ];
+            });
+
+            DeviceAuthAuditor::success($credentials, $result['device']);
+
+            return $result;
+        } catch (\Exception $e) {
+            DeviceAuthAuditor::failed(
+                $credentials,
+                $e->getMessage(),
+                $device,
+            );
+            throw $e;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $credentials
+     * @return array<string, mixed>
+     */
+    private function normalizeAuthCredentials(array $credentials): array
+    {
+        if (isset($credentials['device_key']) && is_string($credentials['device_key'])) {
+            $credentials['device_key'] = strtoupper(trim($credentials['device_key']));
+            if ($credentials['device_key'] === '') {
+                unset($credentials['device_key']);
             }
-        } else {
-            throw new \Exception('Provide either device_key or name and password');
         }
 
-        if ($device->status === Device::STATUS_MAINTENANCE) {
-            throw new \Exception('Device is in maintenance and cannot authenticate');
+        if (isset($credentials['name']) && is_string($credentials['name'])) {
+            $credentials['name'] = trim($credentials['name']);
         }
 
-        return TransactionHelper::execute(function () use ($device) {
-            // One token per device: delete existing tokens for this device
-            DeviceToken::where('device_id', $device->id)->delete();
-
-            $expiresAt = now()->addDays(30);
-            $tokenModel = DeviceToken::create([
-                'device_id' => $device->id,
-                'token' => Str::random(64),
-                'expires_at' => $expiresAt,
-            ]);
-
-            return [
-                'device' => $device,
-                'token' => $tokenModel->token,
-            ];
-        });
+        return $credentials;
     }
 
     /**

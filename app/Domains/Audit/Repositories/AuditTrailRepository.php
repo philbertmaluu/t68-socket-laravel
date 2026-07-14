@@ -21,6 +21,13 @@ class AuditTrailRepository
             $query->where('event', $filters['event']);
         }
 
+        if (isset($filters['tag'])) {
+            $tag = $filters['tag'];
+            $query->where(function ($q) use ($tag) {
+                $q->where('tags', 'like', '%'.$tag.'%');
+            });
+        }
+
         if (isset($filters['auditable_type'])) {
             $query->where('auditable_type', $filters['auditable_type']);
         }
@@ -55,6 +62,13 @@ class AuditTrailRepository
 
         if (isset($filters['event'])) {
             $query->where('event', $filters['event']);
+        }
+
+        if (isset($filters['tag'])) {
+            $tag = $filters['tag'];
+            $query->where(function ($q) use ($tag) {
+                $q->where('tags', 'like', '%'.$tag.'%');
+            });
         }
 
         if (isset($filters['auditable_type'])) {

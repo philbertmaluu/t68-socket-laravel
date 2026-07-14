@@ -23,6 +23,7 @@ class AuditTrailController extends BaseController
             $page = (int) $request->get('page', 1);
             $filters = $request->only([
                 'event',
+                'tag',
                 'auditable_type',
                 'auditable_id',
                 'user_id',
