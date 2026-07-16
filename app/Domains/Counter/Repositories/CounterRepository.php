@@ -41,6 +41,10 @@ class CounterRepository
             $query->where('office_id', $filters['office_id']);
         }
 
+        if (isset($filters['exclude_counter_id'])) {
+            $query->whereKeyNot($filters['exclude_counter_id']);
+        }
+
         if (isset($filters['with_trashed']) && $filters['with_trashed']) {
             $query->withTrashed();
         } elseif (isset($filters['only_trashed']) && $filters['only_trashed']) {
@@ -122,6 +126,10 @@ class CounterRepository
 
         if (isset($filters['office_id'])) {
             $query->where('office_id', $filters['office_id']);
+        }
+
+        if (isset($filters['exclude_counter_id'])) {
+            $query->whereKeyNot($filters['exclude_counter_id']);
         }
 
         if (isset($filters['with_trashed']) && $filters['with_trashed']) {

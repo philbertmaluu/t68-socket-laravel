@@ -28,9 +28,20 @@ class CounterController extends BaseController
             $page = (int) $request->get('page', 1);
             $filters = $request->only(['status', 'counter_type_id', 'service_id', 'office_id']);
 
+            if ($request->boolean('exclude_current')) {
+                $currentCounter = $this->service->getCurrentUserCounter();
+                $filters['exclude_counter_id'] = (string) $currentCounter['id'];
+            }
+
             $result = $this->service->paginate($perPage, $page, $filters);
 
             return $this->sendResponse($result['data'], 'Counters retrieved successfully', ['meta' => $result['meta']]);
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
             return $this->sendError('Failed to retrieve counters', ['error' => $e->getMessage()], 500);
         }
