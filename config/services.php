@@ -47,6 +47,13 @@ return [
         'qms_short_code' => env('QMS_SHORT_CODE', 'QMS'),
     ],
 
+    'qms' => [
+        'feedback_web_url' => env(
+            'FEEDBACK_WEB_URL',
+            'https://portal-pre.nssf.go.tz/#/qms/feedback'
+        ),
+    ],
+
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
         'model' => env('OPENAI_MODEL', 'gpt-4o-mini'),

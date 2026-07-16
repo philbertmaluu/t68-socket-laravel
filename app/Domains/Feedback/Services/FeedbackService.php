@@ -124,7 +124,14 @@ class FeedbackService
 
     private function buildFeedbackUrl(string $token): string
     {
-        $baseUrl = rtrim((string) env('FEEDBACK_WEB_URL', 'https://portal.nssf.go.tz/feedback'), '/');
+        $baseUrl = rtrim(
+            (string) config(
+                'services.qms.feedback_web_url',
+                'https://portal-pre.nssf.go.tz/#/qms/feedback'
+            ),
+            '/'
+        );
+
         return $baseUrl . '?token=' . urlencode($token);
     }
 }
