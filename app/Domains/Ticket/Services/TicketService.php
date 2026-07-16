@@ -356,6 +356,129 @@ class TicketService
     }
 
     /**
+     * List tickets transferred to the authenticated clerk's assigned counter.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function getTransferredTicketsForClerk(): array
+    {
+        $user = Auth::guard('sanctum')->user();
+        if (!$user || !isset($user->id)) {
+            throw new AuthenticationException('User not authenticated');
+        }
+
+        $location = $this->getUserOfficeAndRegionFromHrp();
+        $officeId = (string) $location['office_id'];
+        $clerkIds = $this->resolveClerkIdentityCandidates($user);
+        $counterAssignment = $this->resolveActiveCounterAssignment($clerkIds, $officeId);
+        $myCounterId = (string) $counterAssignment->counter_id;
+
+        $tickets = Ticket::query()
+            ->where('status', 'transferred')
+            ->where('transferred_to_counter_id', $myCounterId)
+            ->where('office_id', $officeId)
+            ->orderByDesc('updated_at')
+            ->get();
+
+        if ($tickets->isEmpty()) {
+            return [];
+        }
+
+        $counterIds = $tickets->pluck('counter_id')->filter()->unique()->values();
+        $sourceClerkIds = $tickets->pluck('clerk_id')->filter()->unique()->values();
+
+        $counterNames = Counter::query()
+            ->whereIn('id', $counterIds)
+            ->pluck('name', 'id');
+
+        $clerkNames = $sourceClerkIds->isEmpty()
+            ? collect()
+            : User::query()->whereIn('id', $sourceClerkIds)->pluck('name', 'id');
+
+        return $tickets->map(function (Ticket $ticket) use ($counterNames, $clerkNames) {
+            return [
+                'id' => $ticket->id,
+                'ticket_number' => $ticket->ticket_number,
+                'service_type' => $ticket->service_type,
+                'estimated_time' => $ticket->estimated_time,
+                'transferred_from_counter' => $counterNames->get((string) $ticket->counter_id) ?? 'Unknown Counter',
+                'transferred_from_clerk' => $clerkNames->get((string) $ticket->clerk_id) ?? 'Unknown Clerk',
+                'transferred_at' => $ticket->updated_at,
+            ];
+        })->values()->all();
+    }
+
+    /**
+     * Accept a ticket that was transferred to the clerk's assigned counter.
+     */
+    public function acceptTransferredTicket(string $ticketId): array
+    {
+        return TransactionHelper::execute(function () use ($ticketId) {
+            $user = Auth::guard('sanctum')->user();
+            if (!$user || !isset($user->id)) {
+                throw new AuthenticationException('User not authenticated');
+            }
+
+            $location = $this->getUserOfficeAndRegionFromHrp();
+            $officeId = (string) $location['office_id'];
+            $clerkIds = $this->resolveClerkIdentityCandidates($user);
+            $counterAssignment = $this->resolveActiveCounterAssignment($clerkIds, $officeId);
+            $myCounterId = (string) $counterAssignment->counter_id;
+
+            $activeTicket = $this->findActiveTicketForClerk($clerkIds, $officeId);
+            if ($activeTicket) {
+                throw new UnprocessableEntityHttpException(
+                    'Complete the current ticket before accepting a transfer.'
+                );
+            }
+
+            $ticket = Ticket::query()
+                ->where('id', $ticketId)
+                ->where('office_id', $officeId)
+                ->first();
+
+            if (!$ticket) {
+                throw new NotFoundHttpException('Ticket not found');
+            }
+
+            if ($ticket->status !== 'transferred') {
+                throw new UnprocessableEntityHttpException('Ticket is not pending transfer');
+            }
+
+            if ((string) $ticket->transferred_to_counter_id !== $myCounterId) {
+                throw new UnprocessableEntityHttpException('Ticket was not transferred to your counter');
+            }
+
+            $counter = Counter::query()
+                ->with('counterType')
+                ->where('office_id', $officeId)
+                ->find($myCounterId);
+
+            if (!$counter) {
+                throw new NotFoundHttpException('Assigned counter not found');
+            }
+
+            $queue = DB::table('queues')
+                ->where('counter_id', $counter->id)
+                ->first();
+
+            if (!$queue) {
+                throw new NotFoundHttpException('No queue found for assigned counter');
+            }
+
+            $ticket->update([
+                'status' => 'called',
+                'counter_id' => $myCounterId,
+                'clerk_id' => (string) $user->id,
+                'queue_id' => (string) $queue->id,
+                'called_at' => now(),
+            ]);
+
+            return $this->formatClerkTicketPayload($ticket->fresh(), $counter);
+        });
+    }
+
+    /**
      * Resolve clerk identity candidates used across counter assignments and tickets.
      *
      * @return list<string>
@@ -389,6 +512,32 @@ class TicketService
             ->orderByDesc('called_at')
             ->orderByDesc('updated_at')
             ->first();
+    }
+
+    /**
+     * @param list<string> $clerkIds
+     */
+    private function resolveActiveCounterAssignment(array $clerkIds, string $officeId): CounterClerk
+    {
+        $counterAssignment = CounterClerk::query()
+            ->whereIn('clerk_id', $clerkIds)
+            ->where('is_active', true)
+            ->latest('assigned_at')
+            ->first();
+
+        if (!$counterAssignment) {
+            throw new UnprocessableEntityHttpException('User not assigned to a counter');
+        }
+
+        $counter = Counter::query()
+            ->where('office_id', $officeId)
+            ->find($counterAssignment->counter_id);
+
+        if (!$counter) {
+            throw new NotFoundHttpException('Assigned counter not found');
+        }
+
+        return $counterAssignment;
     }
 
     /**
@@ -840,6 +989,24 @@ class TicketService
             if ($newStatus === 'serving') {
                 if (empty($data['serving_started_at'])) {
                     $data['serving_started_at'] = now();
+                }
+            }
+
+            if ($newStatus === 'transferred') {
+                $targetCounterId = $data['transferred_to_counter_id'] ?? null;
+                if (empty($targetCounterId)) {
+                    throw new UnprocessableEntityHttpException(
+                        'transferred_to_counter_id is required when transferring a ticket'
+                    );
+                }
+
+                $targetCounter = Counter::query()
+                    ->where('id', $targetCounterId)
+                    ->where('office_id', $ticket->office_id)
+                    ->first();
+
+                if (!$targetCounter) {
+                    throw new UnprocessableEntityHttpException('Target counter not found in this office');
                 }
             }
 

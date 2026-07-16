@@ -196,6 +196,8 @@ class TicketController extends BaseController
             $updated = $this->service->updateTicket($ticket, $request->validated());
             
             return $this->sendResponse($updated, 'Ticket updated successfully');
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
             return $this->sendError('Failed to update ticket', ['error' => $e->getMessage()], 500);
         }
@@ -253,6 +255,44 @@ class TicketController extends BaseController
             return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
             return $this->sendError('Failed to retrieve active ticket', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * List tickets transferred to the clerk's assigned counter.
+     */
+    public function transferredToMe(): JsonResponse
+    {
+        try {
+            $tickets = $this->service->getTransferredTicketsForClerk();
+            return $this->sendResponse($tickets, 'Transferred tickets retrieved successfully');
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve transferred tickets', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Accept a ticket transferred to the clerk's assigned counter.
+     */
+    public function acceptTransfer(string $id): JsonResponse
+    {
+        try {
+            $ticket = $this->service->acceptTransferredTicket($id);
+            return $this->sendResponse($ticket, 'Transferred ticket accepted successfully');
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to accept transferred ticket', ['error' => $e->getMessage()], 500);
         }
     }
 

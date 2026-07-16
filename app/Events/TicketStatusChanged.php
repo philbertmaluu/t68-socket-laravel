@@ -70,6 +70,7 @@ class TicketStatusChanged implements ShouldBroadcast
                 'new_status' => $this->newStatus,
                 'counter_id' => $this->ticket->counter_id,
                 'clerk_id' => $this->ticket->clerk_id,
+                'transferred_to_counter_id' => $this->ticket->transferred_to_counter_id,
                 'office_id' => $this->ticket->office_id,
             ],
         ];
