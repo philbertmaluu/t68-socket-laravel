@@ -96,10 +96,12 @@ class Ticket extends Model
             if (!$onlyQueuePositionChanged && $oldStatus !== $newStatus) {
                 $queueService = app(QueueService::class);
                 
-                if (in_array($newStatus, ['serving', 'completed', 'cancelled', 'skipped'])) {
+                if (in_array($newStatus, ['serving', 'completed', 'cancelled', 'skipped', 'hold'], true)) {
                     $queueService->removeFromQueue($ticket);
                 } elseif ($newStatus === 'waiting' && $oldStatus !== 'waiting') {
                     $queueService->addToQueue($ticket);
+                } elseif ($newStatus === 'paused') {
+                    // Keep assignment; do not re-queue or remove serving context.
                 } else {
                     $queueService->recalculateQueuePositions($ticket->queue_id, $ticket->id);
                 }
@@ -132,6 +134,8 @@ class Ticket extends Model
             'waiting',
             'called',
             'serving',
+            'paused',
+            'hold',
             'completed',
             'skipped',
             'transferred',

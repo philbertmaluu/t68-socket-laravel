@@ -237,7 +237,7 @@ class TicketController extends BaseController
     }
 
     /**
-     * Return the clerk's current incomplete ticket (called/serving), if any.
+     * Return the clerk's current incomplete ticket (called/serving/paused), if any.
      */
     public function activeTicket(): JsonResponse
     {
@@ -259,13 +259,13 @@ class TicketController extends BaseController
     }
 
     /**
-     * List tickets transferred to the clerk's assigned counter.
+     * Tickets needing clerk attention: transferred + further-notice holds.
      */
-    public function transferredToMe(): JsonResponse
+    public function attention(): JsonResponse
     {
         try {
-            $tickets = $this->service->getTransferredTicketsForClerk();
-            return $this->sendResponse($tickets, 'Transferred tickets retrieved successfully');
+            $tickets = $this->service->getAttentionTicketsForClerk();
+            return $this->sendResponse($tickets, 'Attention tickets retrieved successfully');
         } catch (AuthenticationException $e) {
             return $this->sendError($e->getMessage(), [], 401);
         } catch (NotFoundHttpException $e) {
@@ -273,18 +273,19 @@ class TicketController extends BaseController
         } catch (UnprocessableEntityHttpException $e) {
             return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
-            return $this->sendError('Failed to retrieve transferred tickets', ['error' => $e->getMessage()], 500);
+            return $this->sendError('Failed to retrieve attention tickets', ['error' => $e->getMessage()], 500);
         }
     }
 
     /**
-     * Accept a ticket transferred to the clerk's assigned counter.
+     * Hold a ticket: pause timer or until further notice.
      */
-    public function acceptTransfer(string $id): JsonResponse
+    public function hold(Request $request, string $id): JsonResponse
     {
         try {
-            $ticket = $this->service->acceptTransferredTicket($id);
-            return $this->sendResponse($ticket, 'Transferred ticket accepted successfully');
+            $mode = (string) $request->input('mode', '');
+            $ticket = $this->service->holdTicket($id, $mode);
+            return $this->sendResponse($ticket, 'Ticket held successfully');
         } catch (AuthenticationException $e) {
             return $this->sendError($e->getMessage(), [], 401);
         } catch (NotFoundHttpException $e) {
@@ -292,8 +293,54 @@ class TicketController extends BaseController
         } catch (UnprocessableEntityHttpException $e) {
             return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
-            return $this->sendError('Failed to accept transferred ticket', ['error' => $e->getMessage()], 500);
+            return $this->sendError('Failed to hold ticket', ['error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Resume a paused ticket back to serving.
+     */
+    public function resumePause(string $id): JsonResponse
+    {
+        try {
+            $ticket = $this->service->resumePausedTicket($id);
+            return $this->sendResponse($ticket, 'Paused ticket resumed successfully');
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to resume paused ticket', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Resume a transferred or further-notice hold ticket.
+     */
+    public function resume(string $id): JsonResponse
+    {
+        try {
+            $ticket = $this->service->resumeAttentionTicket($id);
+            return $this->sendResponse($ticket, 'Ticket resumed successfully');
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to resume ticket', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * @deprecated Prefer resume(); kept for compatibility.
+     */
+    public function acceptTransfer(string $id): JsonResponse
+    {
+        return $this->resume($id);
     }
 
 }

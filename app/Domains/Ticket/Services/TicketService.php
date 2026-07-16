@@ -9,6 +9,7 @@ use App\Domains\Counter\Services\CounterService;
 use App\Domains\Device\Models\DeviceToken;
 use App\Domains\Service\Models\Service;
 use App\Domains\Service\Services\ServiceService;
+use App\Domains\Queue\Models\Queue;
 use App\Domains\Ticket\Models\Ticket;
 use App\Domains\Ticket\Repositories\TicketRepository;
 use App\Shared\Helpers\TransactionHelper;
@@ -356,11 +357,11 @@ class TicketService
     }
 
     /**
-     * List tickets transferred to the authenticated clerk's assigned counter.
+     * Lightweight attention list: transferred-to-me + further-notice holds.
      *
      * @return list<array<string, mixed>>
      */
-    public function getTransferredTicketsForClerk(): array
+    public function getAttentionTicketsForClerk(): array
     {
         $user = Auth::guard('sanctum')->user();
         if (!$user || !isset($user->id)) {
@@ -374,10 +375,30 @@ class TicketService
         $myCounterId = (string) $counterAssignment->counter_id;
 
         $tickets = Ticket::query()
-            ->where('status', 'transferred')
-            ->where('transferred_to_counter_id', $myCounterId)
+            ->select([
+                'id',
+                'ticket_number',
+                'service_type',
+                'estimated_time',
+                'status',
+                'counter_id',
+                'clerk_id',
+                'transferred_to_counter_id',
+                'updated_at',
+            ])
             ->where('office_id', $officeId)
+            ->where(function ($q) use ($myCounterId, $clerkIds) {
+                $q->where(function ($t) use ($myCounterId) {
+                    $t->where('status', 'transferred')
+                        ->where('transferred_to_counter_id', $myCounterId);
+                })->orWhere(function ($h) use ($myCounterId, $clerkIds) {
+                    $h->where('status', 'hold')
+                        ->where('counter_id', $myCounterId)
+                        ->whereIn('clerk_id', $clerkIds);
+                });
+            })
             ->orderByDesc('updated_at')
+            ->limit(25)
             ->get();
 
         if ($tickets->isEmpty()) {
@@ -387,31 +408,130 @@ class TicketService
         $counterIds = $tickets->pluck('counter_id')->filter()->unique()->values();
         $sourceClerkIds = $tickets->pluck('clerk_id')->filter()->unique()->values();
 
-        $counterNames = Counter::query()
-            ->whereIn('id', $counterIds)
-            ->pluck('name', 'id');
+        $counterNames = $counterIds->isEmpty()
+            ? collect()
+            : Counter::query()->whereIn('id', $counterIds)->pluck('name', 'id');
 
         $clerkNames = $sourceClerkIds->isEmpty()
             ? collect()
             : User::query()->whereIn('id', $sourceClerkIds)->pluck('name', 'id');
 
         return $tickets->map(function (Ticket $ticket) use ($counterNames, $clerkNames) {
+            $type = $ticket->status === 'hold' ? 'hold' : 'transferred';
+
             return [
                 'id' => $ticket->id,
+                'type' => $type,
                 'ticket_number' => $ticket->ticket_number,
                 'service_type' => $ticket->service_type,
                 'estimated_time' => $ticket->estimated_time,
-                'transferred_from_counter' => $counterNames->get((string) $ticket->counter_id) ?? 'Unknown Counter',
-                'transferred_from_clerk' => $clerkNames->get((string) $ticket->clerk_id) ?? 'Unknown Clerk',
-                'transferred_at' => $ticket->updated_at,
+                'from_counter' => $counterNames->get((string) $ticket->counter_id) ?? 'Unknown Counter',
+                'from_clerk' => $clerkNames->get((string) $ticket->clerk_id) ?? 'Unknown Clerk',
+                'attention_at' => $ticket->updated_at,
             ];
         })->values()->all();
     }
 
     /**
-     * Accept a ticket that was transferred to the clerk's assigned counter.
+     * Pause timer (paused) or hold until further notice (hold).
+     *
+     * @param 'pause'|'further_notice' $mode
      */
-    public function acceptTransferredTicket(string $ticketId): array
+    public function holdTicket(string $ticketId, string $mode): array
+    {
+        return TransactionHelper::execute(function () use ($ticketId, $mode) {
+            $user = Auth::guard('sanctum')->user();
+            if (!$user || !isset($user->id)) {
+                throw new AuthenticationException('User not authenticated');
+            }
+
+            if (!in_array($mode, ['pause', 'further_notice'], true)) {
+                throw new UnprocessableEntityHttpException('Invalid hold mode');
+            }
+
+            $location = $this->getUserOfficeAndRegionFromHrp();
+            $officeId = (string) $location['office_id'];
+            $clerkIds = $this->resolveClerkIdentityCandidates($user);
+
+            $ticket = Ticket::query()
+                ->where('id', $ticketId)
+                ->where('office_id', $officeId)
+                ->first();
+
+            if (!$ticket) {
+                throw new NotFoundHttpException('Ticket not found');
+            }
+
+            if (!in_array((string) $ticket->clerk_id, $clerkIds, true)) {
+                throw new UnprocessableEntityHttpException('Ticket is not assigned to you');
+            }
+
+            if (!in_array($ticket->status, ['called', 'serving'], true)) {
+                throw new UnprocessableEntityHttpException('Ticket cannot be held in its current status');
+            }
+
+            $newStatus = $mode === 'pause' ? 'paused' : 'hold';
+            $ticket->update(['status' => $newStatus]);
+
+            return [
+                'id' => $ticket->id,
+                'ticket_number' => $ticket->ticket_number,
+                'status' => $newStatus,
+                'mode' => $mode,
+            ];
+        });
+    }
+
+    /**
+     * Resume a paused ticket back to serving (timer continues on frontend).
+     */
+    public function resumePausedTicket(string $ticketId): array
+    {
+        return TransactionHelper::execute(function () use ($ticketId) {
+            $user = Auth::guard('sanctum')->user();
+            if (!$user || !isset($user->id)) {
+                throw new AuthenticationException('User not authenticated');
+            }
+
+            $location = $this->getUserOfficeAndRegionFromHrp();
+            $officeId = (string) $location['office_id'];
+            $clerkIds = $this->resolveClerkIdentityCandidates($user);
+
+            $ticket = Ticket::query()
+                ->where('id', $ticketId)
+                ->where('office_id', $officeId)
+                ->first();
+
+            if (!$ticket) {
+                throw new NotFoundHttpException('Ticket not found');
+            }
+
+            if (!in_array((string) $ticket->clerk_id, $clerkIds, true)) {
+                throw new UnprocessableEntityHttpException('Ticket is not assigned to you');
+            }
+
+            if ($ticket->status !== 'paused') {
+                throw new UnprocessableEntityHttpException('Ticket is not paused');
+            }
+
+            $ticket->update(['status' => 'serving']);
+
+            $counter = null;
+            if ($ticket->counter_id) {
+                $counter = Counter::query()
+                    ->with('counterType')
+                    ->where('office_id', $officeId)
+                    ->find($ticket->counter_id);
+            }
+
+            return $this->formatClerkTicketPayload($ticket->fresh(), $counter);
+        });
+    }
+
+    /**
+     * Claim a transferred or further-notice hold ticket into the clerk's active slot.
+     */
+    public function resumeAttentionTicket(string $ticketId): array
     {
         return TransactionHelper::execute(function () use ($ticketId) {
             $user = Auth::guard('sanctum')->user();
@@ -428,7 +548,7 @@ class TicketService
             $activeTicket = $this->findActiveTicketForClerk($clerkIds, $officeId);
             if ($activeTicket) {
                 throw new UnprocessableEntityHttpException(
-                    'Complete the current ticket before accepting a transfer.'
+                    'Complete the current ticket before resuming another.'
                 );
             }
 
@@ -441,12 +561,18 @@ class TicketService
                 throw new NotFoundHttpException('Ticket not found');
             }
 
-            if ($ticket->status !== 'transferred') {
-                throw new UnprocessableEntityHttpException('Ticket is not pending transfer');
-            }
-
-            if ((string) $ticket->transferred_to_counter_id !== $myCounterId) {
-                throw new UnprocessableEntityHttpException('Ticket was not transferred to your counter');
+            if ($ticket->status === 'transferred') {
+                if ((string) $ticket->transferred_to_counter_id !== $myCounterId) {
+                    throw new UnprocessableEntityHttpException('Ticket was not transferred to your counter');
+                }
+            } elseif ($ticket->status === 'hold') {
+                if ((string) $ticket->counter_id !== $myCounterId
+                    || !in_array((string) $ticket->clerk_id, $clerkIds, true)
+                ) {
+                    throw new UnprocessableEntityHttpException('Ticket is not on hold for your counter');
+                }
+            } else {
+                throw new UnprocessableEntityHttpException('Ticket is not pending attention');
             }
 
             $counter = Counter::query()
@@ -458,7 +584,7 @@ class TicketService
                 throw new NotFoundHttpException('Assigned counter not found');
             }
 
-            $queue = DB::table('queues')
+            $queue = Queue::query()
                 ->where('counter_id', $counter->id)
                 ->first();
 
@@ -476,6 +602,12 @@ class TicketService
 
             return $this->formatClerkTicketPayload($ticket->fresh(), $counter);
         });
+    }
+
+    /** @deprecated Use resumeAttentionTicket */
+    public function acceptTransferredTicket(string $ticketId): array
+    {
+        return $this->resumeAttentionTicket($ticketId);
     }
 
     /**
@@ -508,7 +640,7 @@ class TicketService
         return Ticket::query()
             ->whereIn('clerk_id', $clerkIds)
             ->where('office_id', $officeId)
-            ->whereIn('status', ['called', 'serving'])
+            ->whereIn('status', ['called', 'serving', 'paused'])
             ->orderByDesc('called_at')
             ->orderByDesc('updated_at')
             ->first();

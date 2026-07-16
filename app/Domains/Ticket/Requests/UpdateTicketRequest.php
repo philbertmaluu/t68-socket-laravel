@@ -24,7 +24,7 @@ class UpdateTicketRequest extends FormRequest
             'phone_number' => ['nullable', 'string', 'max:20'],
             'estimated_time' => ['nullable', 'integer'],
             'priority' => ['sometimes', 'boolean'],
-            'status' => ['sometimes', 'string', Rule::in(['waiting', 'called', 'serving', 'completed', 'skipped', 'transferred', 'cancelled'])],
+            'status' => ['sometimes', 'string', Rule::in(['waiting', 'called', 'serving', 'paused', 'hold', 'completed', 'skipped', 'transferred', 'cancelled'])],
             'counter_id' => ['nullable', 'string', 'max:50'],
             'clerk_id' => ['nullable', 'string', 'max:50'],
             'office_id' => ['sometimes', 'string', 'max:50'],
