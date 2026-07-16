@@ -10,5 +10,6 @@ Route::post('tickets/{id}/hold', [TicketController::class, 'hold'])->middleware(
 Route::post('tickets/{id}/resume-pause', [TicketController::class, 'resumePause'])->middleware('auth:sanctum');
 Route::post('tickets/{id}/resume', [TicketController::class, 'resume'])->middleware('auth:sanctum');
 Route::post('tickets/{id}/accept-transfer', [TicketController::class, 'acceptTransfer'])->middleware('auth:sanctum');
+Route::post('tickets/{id}/no-show', [TicketController::class, 'noShow'])->middleware('auth:sanctum');
 Route::get('tickets/clerk-history', [TicketController::class, 'getClerksTickets'])->middleware('auth:sanctum');
 Route::apiResource('tickets', TicketController::class);

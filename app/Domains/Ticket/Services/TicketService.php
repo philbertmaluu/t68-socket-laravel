@@ -611,6 +611,50 @@ class TicketService
     }
 
     /**
+     * Mark a called ticket as no_show when the customer does not appear.
+     */
+    public function markTicketNoShow(string $ticketId): array
+    {
+        return TransactionHelper::execute(function () use ($ticketId) {
+            $user = Auth::guard('sanctum')->user();
+            if (!$user || !isset($user->id)) {
+                throw new AuthenticationException('User not authenticated');
+            }
+
+            $location = $this->getUserOfficeAndRegionFromHrp();
+            $officeId = (string) $location['office_id'];
+            $clerkIds = $this->resolveClerkIdentityCandidates($user);
+
+            $ticket = Ticket::query()
+                ->where('id', $ticketId)
+                ->where('office_id', $officeId)
+                ->first();
+
+            if (!$ticket) {
+                throw new NotFoundHttpException('Ticket not found');
+            }
+
+            if (!in_array((string) $ticket->clerk_id, $clerkIds, true)) {
+                throw new UnprocessableEntityHttpException('Ticket is not assigned to you');
+            }
+
+            if ($ticket->status !== 'called') {
+                throw new UnprocessableEntityHttpException(
+                    'Only a called ticket can be marked as no show'
+                );
+            }
+
+            $ticket->update(['status' => 'no_show']);
+
+            return [
+                'id' => $ticket->id,
+                'ticket_number' => $ticket->ticket_number,
+                'status' => 'no_show',
+            ];
+        });
+    }
+
+    /**
      * Resolve clerk identity candidates used across counter assignments and tickets.
      *
      * @return list<string>
@@ -871,6 +915,7 @@ class TicketService
                     'total_serving_tickets' => (int) ($statusCounts['serving'] ?? 0),
                     'total_completed_tickets' => (int) ($statusCounts['completed'] ?? 0),
                     'total_skipped_tickets' => (int) ($statusCounts['skipped'] ?? 0),
+                    'total_no_show_tickets' => (int) ($statusCounts['no_show'] ?? 0),
                     'total_transferred_tickets' => (int) ($statusCounts['transferred'] ?? 0),
                     'total_suspend_tickets' => (int) ($statusCounts['suspend'] ?? 0),
                     'total_cancelled_tickets' => (int) ($statusCounts['cancelled'] ?? 0),

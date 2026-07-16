@@ -343,5 +343,24 @@ class TicketController extends BaseController
         return $this->resume($id);
     }
 
+    /**
+     * Mark a called ticket as no show.
+     */
+    public function noShow(string $id): JsonResponse
+    {
+        try {
+            $ticket = $this->service->markTicketNoShow($id);
+            return $this->sendResponse($ticket, 'Ticket marked as no show successfully');
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to mark ticket as no show', ['error' => $e->getMessage()], 500);
+        }
+    }
+
 }
 

@@ -96,7 +96,7 @@ class Ticket extends Model
             if (!$onlyQueuePositionChanged && $oldStatus !== $newStatus) {
                 $queueService = app(QueueService::class);
                 
-                if (in_array($newStatus, ['serving', 'completed', 'cancelled', 'skipped', 'hold'], true)) {
+                if (in_array($newStatus, ['serving', 'completed', 'cancelled', 'skipped', 'hold', 'no_show'], true)) {
                     $queueService->removeFromQueue($ticket);
                 } elseif ($newStatus === 'waiting' && $oldStatus !== 'waiting') {
                     $queueService->addToQueue($ticket);
@@ -138,6 +138,7 @@ class Ticket extends Model
             'hold',
             'completed',
             'skipped',
+            'no_show',
             'transferred',
             'cancelled',
         ];
