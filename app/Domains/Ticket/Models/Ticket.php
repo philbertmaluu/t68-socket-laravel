@@ -42,6 +42,7 @@ class Ticket extends Model
         'completed_at',
         'duration_seconds',
         'transferred_to_counter_id',
+        'suspension_reason',
         'office_id',
         'locale',
         'queue_position',
@@ -96,7 +97,7 @@ class Ticket extends Model
             if (!$onlyQueuePositionChanged && $oldStatus !== $newStatus) {
                 $queueService = app(QueueService::class);
                 
-                if (in_array($newStatus, ['serving', 'completed', 'cancelled', 'skipped', 'hold', 'no_show'], true)) {
+                if (in_array($newStatus, ['serving', 'completed', 'cancelled', 'skipped', 'hold', 'no_show', 'suspended'], true)) {
                     $queueService->removeFromQueue($ticket);
                 } elseif ($newStatus === 'waiting' && $oldStatus !== 'waiting') {
                     $queueService->addToQueue($ticket);
@@ -139,6 +140,7 @@ class Ticket extends Model
             'completed',
             'skipped',
             'no_show',
+            'suspended',
             'transferred',
             'cancelled',
         ];

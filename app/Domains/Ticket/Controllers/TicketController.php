@@ -3,6 +3,7 @@
 namespace App\Domains\Ticket\Controllers;
 
 use App\Domains\Ticket\Requests\StoreTicketRequest;
+use App\Domains\Ticket\Requests\SuspendTicketRequest;
 use App\Domains\Ticket\Requests\UpdateTicketRequest;
 use App\Domains\Ticket\Services\TicketService;
 use App\Http\Controllers\BaseController;
@@ -359,6 +360,25 @@ class TicketController extends BaseController
             return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
             return $this->sendError('Failed to mark ticket as no show', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Suspend a serving/paused ticket with a reason.
+     */
+    public function suspend(SuspendTicketRequest $request, string $id): JsonResponse
+    {
+        try {
+            $ticket = $this->service->suspendTicket($id, (string) $request->validated('reason'));
+            return $this->sendResponse($ticket, 'Ticket suspended successfully');
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to suspend ticket', ['error' => $e->getMessage()], 500);
         }
     }
 

@@ -655,6 +655,68 @@ class TicketService
     }
 
     /**
+     * Suspend an in-progress ticket with a required reason.
+     */
+    public function suspendTicket(string $ticketId, string $reason): array
+    {
+        return TransactionHelper::execute(function () use ($ticketId, $reason) {
+            $user = Auth::guard('sanctum')->user();
+            if (!$user || !isset($user->id)) {
+                throw new AuthenticationException('User not authenticated');
+            }
+
+            $trimmedReason = trim($reason);
+            if (mb_strlen($trimmedReason) < 3) {
+                throw new UnprocessableEntityHttpException('Suspension reason is required');
+            }
+
+            $location = $this->getUserOfficeAndRegionFromHrp();
+            $officeId = (string) $location['office_id'];
+            $clerkIds = $this->resolveClerkIdentityCandidates($user);
+
+            $ticket = Ticket::query()
+                ->where('id', $ticketId)
+                ->where('office_id', $officeId)
+                ->first();
+
+            if (!$ticket) {
+                throw new NotFoundHttpException('Ticket not found');
+            }
+
+            if (!in_array((string) $ticket->clerk_id, $clerkIds, true)) {
+                throw new UnprocessableEntityHttpException('Ticket is not assigned to you');
+            }
+
+            if (!in_array($ticket->status, ['serving', 'paused'], true)) {
+                throw new UnprocessableEntityHttpException(
+                    'Only a serving or paused ticket can be suspended'
+                );
+            }
+
+            $payload = [
+                'status' => 'suspended',
+                'suspension_reason' => $trimmedReason,
+            ];
+
+            if ($ticket->serving_started_at) {
+                $payload['duration_seconds'] = max(
+                    0,
+                    now()->diffInSeconds($ticket->serving_started_at)
+                );
+            }
+
+            $ticket->update($payload);
+
+            return [
+                'id' => $ticket->id,
+                'ticket_number' => $ticket->ticket_number,
+                'status' => 'suspended',
+                'suspension_reason' => $trimmedReason,
+            ];
+        });
+    }
+
+    /**
      * Resolve clerk identity candidates used across counter assignments and tickets.
      *
      * @return list<string>
@@ -917,7 +979,9 @@ class TicketService
                     'total_skipped_tickets' => (int) ($statusCounts['skipped'] ?? 0),
                     'total_no_show_tickets' => (int) ($statusCounts['no_show'] ?? 0),
                     'total_transferred_tickets' => (int) ($statusCounts['transferred'] ?? 0),
-                    'total_suspend_tickets' => (int) ($statusCounts['suspend'] ?? 0),
+                    'total_suspend_tickets' => (int) (
+                        ($statusCounts['suspended'] ?? 0) + ($statusCounts['suspend'] ?? 0)
+                    ),
                     'total_cancelled_tickets' => (int) ($statusCounts['cancelled'] ?? 0),
                     'total_duration_seconds' => $totalDurationSeconds,
                     'avg_duration_seconds' => $avgDurationSeconds,
