@@ -87,19 +87,21 @@ class NotificationTemplateRepository
 
     /**
      * Find the best active template for a given key/channel/locale.
-     * Tries exact locale first, then falls back to default locale (sw) if needed.
+     * Prefers tenant-specific over global (null tenant), exact locale over sw fallback.
      */
     public function findActiveByKeyAndLocale(string $key, ?string $locale = null, ?string $channel = 'sms'): ?NotificationTemplate
     {
         $baseQuery = NotificationTemplate::query()
             ->where('key', $key)
-            ->where('active', true);
+            ->where('active', true)
+            // Tenant-specific rows first, then global defaults
+            ->orderByRaw('tenant_id IS NULL ASC')
+            ->orderBy('locale');
 
         if ($channel !== null) {
             $baseQuery->where('channel', $channel);
         }
 
-        // 1) Try exact locale match if provided
         if ($locale !== null) {
             $exact = (clone $baseQuery)->where('locale', $locale)->first();
             if ($exact !== null) {
@@ -107,14 +109,12 @@ class NotificationTemplateRepository
             }
         }
 
-        // 2) Fallback to default locale (sw) if available
         $fallback = (clone $baseQuery)->where('locale', 'sw')->first();
         if ($fallback !== null) {
             return $fallback;
         }
 
-        // 3) As a last resort, return any active template with this key/channel
-        return $baseQuery->orderBy('locale')->first();
+        return $baseQuery->first();
     }
 
     public function create(array $data): NotificationTemplate
