@@ -158,13 +158,15 @@ class NotificationService
         $template = $this->notificationTemplateService->findActiveByKeyAndLocale(
             'ticket_created_sms',
             is_string($locale) ? $locale : null,
-            'sms'
+            'sms',
+            $ticket->tenant_id
         );
 
         if (!$template) {
             Log::warning('Skipping ticket created SMS: No active ticket_created_sms template found', [
                 'ticket_number' => $ticketNumber,
                 'locale' => $locale,
+                'tenant_id' => $ticket->tenant_id,
             ]);
             return [
                 'success' => false,
@@ -231,13 +233,15 @@ class NotificationService
         $template = $this->notificationTemplateService->findActiveByKeyAndLocale(
             'ticket_completed_sms',
             is_string($locale) ? $locale : null,
-            'sms'
+            'sms',
+            $ticket->tenant_id
         );
 
         if (!$template) {
             Log::warning('Skipping ticket completed SMS: No active ticket_completed_sms template found', [
                 'ticket_number' => $ticketNumber,
                 'locale' => $locale,
+                'tenant_id' => $ticket->tenant_id,
             ]);
             return [
                 'success' => false,

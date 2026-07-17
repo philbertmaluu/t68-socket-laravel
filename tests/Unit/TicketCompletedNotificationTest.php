@@ -45,7 +45,7 @@ class TicketCompletedNotificationTest extends TestCase
         $templateService = Mockery::mock(NotificationTemplateService::class);
         $templateService->shouldReceive('findActiveByKeyAndLocale')
             ->once()
-            ->with('ticket_completed_sms', 'en', 'sms')
+            ->with('ticket_completed_sms', 'en', 'sms', '1')
             ->andReturn($template);
 
         $feedbackService = Mockery::mock(FeedbackService::class);

@@ -45,9 +45,13 @@ class NotificationTemplateService
         return $this->repository->delete($template, $force);
     }
 
-    public function findActiveByKeyAndLocale(string $key, ?string $locale = null, ?string $channel = 'sms'): ?NotificationTemplate
-    {
-        return $this->repository->findActiveByKeyAndLocale($key, $locale, $channel);
+    public function findActiveByKeyAndLocale(
+        string $key,
+        ?string $locale = null,
+        ?string $channel = 'sms',
+        int|string|null $tenantId = null
+    ): ?NotificationTemplate {
+        return $this->repository->findActiveByKeyAndLocale($key, $locale, $channel, $tenantId);
     }
 }
 

@@ -72,6 +72,49 @@ class NotificationTemplateTenantScopeTest extends TestCase
         $this->assertNotContains('other_tenant_only_sms', $keys);
     }
 
+    public function test_sms_lookup_finds_global_template_using_ticket_tenant(): void
+    {
+        $this->seedTenant();
+
+        // Simulate a logged-in admin from another context that would confuse Auth-based scope
+        $user = $this->createUser(tenantId: 1);
+        Sanctum::actingAs($user);
+
+        $repo = new \App\Domains\Notification\Repositories\NotificationTemplateRepository();
+        $template = $repo->findActiveByKeyAndLocale('ticket_created_sms', 'en', 'sms', 1);
+
+        $this->assertNotNull($template);
+        $this->assertSame('ticket_created_sms', $template->key);
+        $this->assertTrue($template->active);
+    }
+
+    public function test_editing_global_template_does_not_rewrite_tenant_id(): void
+    {
+        $this->seedTenant();
+        $user = $this->createUser(tenantId: 1);
+        Sanctum::actingAs($user);
+
+        $template = \App\Domains\Notification\Models\NotificationTemplate::withoutGlobalScope('tenant')
+            ->whereNull('tenant_id')
+            ->where('key', 'ticket_completed_sms')
+            ->where('locale', 'en')
+            ->firstOrFail();
+
+        $response = $this->putJson("/api/qms/notification-templates/{$template->id}", [
+            'body' => 'Updated completed SMS body {ticketNumber}',
+            'active' => true,
+        ]);
+
+        $response->assertOk();
+        $this->assertNull($response->json('data.tenant_id'));
+        $this->assertDatabaseHas('notification_templates', [
+            'id' => $template->id,
+            'tenant_id' => null,
+            'body' => 'Updated completed SMS body {ticketNumber}',
+            'active' => 1,
+        ]);
+    }
+
     private function seedTenant(): void
     {
         DB::table('tenants')->insert([

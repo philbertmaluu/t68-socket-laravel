@@ -87,13 +87,24 @@ class NotificationTemplateRepository
 
     /**
      * Find the best active template for a given key/channel/locale.
-     * Prefers tenant-specific over global (null tenant), exact locale over sw fallback.
+     * Ignores Auth tenant scope — SMS is sent from ticket context, not admin session.
+     * Prefers ticket-tenant rows over global (null), exact locale over sw fallback.
      */
-    public function findActiveByKeyAndLocale(string $key, ?string $locale = null, ?string $channel = 'sms'): ?NotificationTemplate
-    {
-        $baseQuery = NotificationTemplate::query()
+    public function findActiveByKeyAndLocale(
+        string $key,
+        ?string $locale = null,
+        ?string $channel = 'sms',
+        int|string|null $tenantId = null
+    ): ?NotificationTemplate {
+        $baseQuery = NotificationTemplate::withoutGlobalScope('tenant')
             ->where('key', $key)
             ->where('active', true)
+            ->where(function ($query) use ($tenantId) {
+                $query->whereNull('tenant_id');
+                if ($tenantId !== null && $tenantId !== '' && (int) $tenantId !== 0) {
+                    $query->orWhere('tenant_id', $tenantId);
+                }
+            })
             // Tenant-specific rows first, then global defaults
             ->orderByRaw('tenant_id IS NULL ASC')
             ->orderBy('locale');

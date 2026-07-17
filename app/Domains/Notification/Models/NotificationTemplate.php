@@ -42,11 +42,22 @@ class NotificationTemplate extends Model
     }
 
     /**
-     * Default SMS templates are seeded with tenant_id = null (global).
-     * Include those alongside the current tenant's own templates.
+     * Override HasTenant boot:
+     * - New templates created in the UI become tenant-scoped
+     * - Editing a global (null) template must NOT rewrite tenant_id
+     * - Listing includes global + current-tenant rows
      */
-    protected static function booted(): void
+    protected static function bootHasTenant(): void
     {
+        static::creating(function ($model) {
+            if ($model->tenant_id === null || $model->tenant_id === '') {
+                $tenantId = self::getCurrentTenantId();
+                if (!empty($tenantId)) {
+                    $model->tenant_id = $tenantId;
+                }
+            }
+        });
+
         static::addGlobalScope('tenant', function (Builder $builder) {
             $tenantId = self::getCurrentTenantId();
             if (empty($tenantId)) {
