@@ -17,6 +17,7 @@ class TenantSeeder extends Seeder
     {
         $tenants = [
             [
+                'id' => 1,
                 'name' => 'NSSF',
                 'domain' => 'https://portal.nssf.go.tz/',
                 'database' => 'QMS-DB',
@@ -31,7 +32,7 @@ class TenantSeeder extends Seeder
 
         foreach ($tenants as $tenantData) {
             Tenant::firstOrCreate(
-                ['domain' => $tenantData['domain']],
+                ['id' => $tenantData['id']],
                 $tenantData
             );
         }

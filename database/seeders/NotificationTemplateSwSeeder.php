@@ -5,10 +5,10 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
-class NotificationTemplateEnSeeder extends Seeder
+class NotificationTemplateSwSeeder extends Seeder
 {
     /**
-     * Seed default English notification templates for tenant_id = 1.
+     * Seed default Swahili notification templates for tenant_id = 1.
      */
     public function run(): void
     {
@@ -18,23 +18,23 @@ class NotificationTemplateEnSeeder extends Seeder
         $templates = [
             [
                 'key' => 'ticket_created_sms',
-                'body' => "Dear {memberName},\nYour ticket number {ticketNumber} has been created for {serviceType}.\nPlease wait to be called for service.\nThank you.",
-                'description' => 'SMS sent when a ticket is created (English).',
+                'body' => "Ndugu {memberName},\nTiketi yako namba {ticketNumber} imeundwa kwa ajili ya huduma ya {serviceType}.\nTafadhali subiri kuitwa ili kupokea huduma.\nAsante",
+                'description' => 'SMS sent when a ticket is created.',
             ],
             [
                 'key' => 'ticket_completed_sms',
-                'body' => "Dear {memberName},\nYour service for ticket number {ticketNumber} ({serviceType}) has been completed.\nPlease share your feedback: {feedbackUrl}\nThank you for using NSSF services.\nWelcome again!",
-                'description' => 'SMS sent when a ticket is completed (English).',
+                'body' => "Ndugu {memberName},\nHuduma yako kwa tiketi namba {ticketNumber} ({serviceType}) imekamilika.\nTafadhali toa maoni yako: {feedbackUrl}\nAsante kwa kutumia huduma za NSSF.\nKaribu tena!",
+                'description' => 'SMS sent when a ticket is completed.',
             ],
             [
                 'key' => 'thank_you_visit_sms',
-                'body' => "Thank you for visiting our NSSF offices.\nWe appreciate your time and cooperation.",
-                'description' => 'Generic thank you for visit SMS (English).',
+                'body' => "Asante kwa kutembelea ofisi zetu za NSSF.\nTunathamini muda wako na ushirikiano wako.",
+                'description' => 'Generic thank you for visit SMS.',
             ],
             [
                 'key' => 'feedback_thanks_sms',
-                'body' => "Thank you for sharing your feedback about NSSF services.\nYour comments help us improve our service delivery.",
-                'description' => 'Thank you message after customer feedback (English).',
+                'body' => "Asante kwa maoni yako kuhusu huduma za NSSF.\nMaoni yako yanatusaidia kuboresha huduma zetu.",
+                'description' => 'Thank you message after customer feedback.',
             ],
         ];
 
@@ -43,7 +43,7 @@ class NotificationTemplateEnSeeder extends Seeder
                 ->where('tenant_id', $tenantId)
                 ->where('channel', 'sms')
                 ->where('key', $template['key'])
-                ->where('locale', 'en')
+                ->where('locale', 'sw')
                 ->whereNull('deleted_at')
                 ->first();
 
@@ -63,7 +63,7 @@ class NotificationTemplateEnSeeder extends Seeder
                 'tenant_id' => $tenantId,
                 'key' => $template['key'],
                 'channel' => 'sms',
-                'locale' => 'en',
+                'locale' => 'sw',
                 'subject' => null,
                 'body' => $template['body'],
                 'description' => $template['description'],

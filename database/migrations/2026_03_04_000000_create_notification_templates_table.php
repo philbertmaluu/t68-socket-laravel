@@ -35,11 +35,29 @@ return new class extends Migration
             $table->index('active', 'idx_notification_templates_active');
         });
 
+        // Ensure default tenant exists before seeding templates.
+        if (!DB::table('tenants')->where('id', 1)->exists()) {
+            DB::table('tenants')->insert([
+                'id' => 1,
+                'name' => 'NSSF',
+                'domain' => 'https://portal.nssf.go.tz/',
+                'database' => 'QMS-DB',
+                'is_active' => true,
+                'settings' => json_encode([
+                    'timezone' => 'UTC',
+                    'locale' => 'en',
+                ]),
+                'created_by' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
         // Seed a few default templates so the system works immediately.
         // Content managers can edit these via the frontend.
         DB::table('notification_templates')->insert([
             [
-                'tenant_id' => null,
+                'tenant_id' => 1,
                 'key' => 'ticket_created_sms',
                 'channel' => 'sms',
                 'locale' => 'sw',
@@ -54,7 +72,7 @@ return new class extends Migration
                 'updated_at' => now(),
             ],
             [
-                'tenant_id' => null,
+                'tenant_id' => 1,
                 'key' => 'ticket_completed_sms',
                 'channel' => 'sms',
                 'locale' => 'sw',
@@ -69,7 +87,7 @@ return new class extends Migration
                 'updated_at' => now(),
             ],
             [
-                'tenant_id' => null,
+                'tenant_id' => 1,
                 'key' => 'thank_you_visit_sms',
                 'channel' => 'sms',
                 'locale' => 'sw',
@@ -84,7 +102,7 @@ return new class extends Migration
                 'updated_at' => now(),
             ],
             [
-                'tenant_id' => null,
+                'tenant_id' => 1,
                 'key' => 'feedback_thanks_sms',
                 'channel' => 'sms',
                 'locale' => 'sw',

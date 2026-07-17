@@ -28,8 +28,8 @@ class NotificationTemplateTenantScopeTest extends TestCase
         $this->assertContains('ticket_created_sms', $keys);
         $this->assertContains('ticket_completed_sms', $keys);
         $this->assertTrue(
-            collect($response->json('data'))->contains(fn ($row) => ($row['tenant_id'] ?? null) === null),
-            'Expected at least one global (null tenant) template to be returned'
+            collect($response->json('data'))->contains(fn ($row) => (int) ($row['tenant_id'] ?? 0) === 1),
+            'Expected templates to belong to default tenant_id=1'
         );
     }
 
@@ -88,14 +88,14 @@ class NotificationTemplateTenantScopeTest extends TestCase
         $this->assertTrue($template->active);
     }
 
-    public function test_editing_global_template_does_not_rewrite_tenant_id(): void
+    public function test_editing_default_tenant_template_keeps_tenant_id_one(): void
     {
         $this->seedTenant();
         $user = $this->createUser(tenantId: 1);
         Sanctum::actingAs($user);
 
         $template = \App\Domains\Notification\Models\NotificationTemplate::withoutGlobalScope('tenant')
-            ->whereNull('tenant_id')
+            ->where('tenant_id', 1)
             ->where('key', 'ticket_completed_sms')
             ->where('locale', 'en')
             ->firstOrFail();
@@ -106,10 +106,10 @@ class NotificationTemplateTenantScopeTest extends TestCase
         ]);
 
         $response->assertOk();
-        $this->assertNull($response->json('data.tenant_id'));
+        $this->assertSame(1, (int) $response->json('data.tenant_id'));
         $this->assertDatabaseHas('notification_templates', [
             'id' => $template->id,
-            'tenant_id' => null,
+            'tenant_id' => 1,
             'body' => 'Updated completed SMS body {ticketNumber}',
             'active' => 1,
         ]);
@@ -117,6 +117,10 @@ class NotificationTemplateTenantScopeTest extends TestCase
 
     private function seedTenant(): void
     {
+        if (DB::table('tenants')->where('id', 1)->exists()) {
+            return;
+        }
+
         DB::table('tenants')->insert([
             'id' => 1,
             'name' => 'Tenant A',

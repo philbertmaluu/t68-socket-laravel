@@ -6,12 +6,55 @@ use Illuminate\Support\Facades\DB;
 return new class extends Migration
 {
     /**
-     * Ensure default global SMS templates exist (tenant_id null).
-     * Safe to run on environments where the original seed insert was skipped or wiped.
+     * Ensure default tenant id=1 exists and all SMS templates belong to it.
      */
     public function up(): void
     {
         $now = now();
+
+        if (!DB::table('tenants')->where('id', 1)->exists()) {
+            DB::table('tenants')->insert([
+                'id' => 1,
+                'name' => 'NSSF',
+                'domain' => 'https://portal.nssf.go.tz/',
+                'database' => 'QMS-DB',
+                'is_active' => true,
+                'settings' => json_encode([
+                    'timezone' => 'UTC',
+                    'locale' => 'en',
+                ]),
+                'created_by' => 1,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        // Move any leftover global/null templates onto tenant 1 without unique conflicts
+        $nullTemplates = DB::table('notification_templates')
+            ->whereNull('tenant_id')
+            ->get();
+
+        foreach ($nullTemplates as $row) {
+            $existsForTenant = DB::table('notification_templates')
+                ->where('tenant_id', 1)
+                ->where('key', $row->key)
+                ->where('channel', $row->channel)
+                ->where('locale', $row->locale)
+                ->whereNull('deleted_at')
+                ->exists();
+
+            if ($existsForTenant) {
+                DB::table('notification_templates')->where('id', $row->id)->delete();
+                continue;
+            }
+
+            DB::table('notification_templates')
+                ->where('id', $row->id)
+                ->update([
+                    'tenant_id' => 1,
+                    'updated_at' => $now,
+                ]);
+        }
 
         $templates = [
             [
@@ -74,6 +117,17 @@ return new class extends Migration
                 ->exists();
 
             if ($exists) {
+                // Ensure active for SMS sending
+                DB::table('notification_templates')
+                    ->where('tenant_id', 1)
+                    ->where('key', $template['key'])
+                    ->where('channel', 'sms')
+                    ->where('locale', $template['locale'])
+                    ->whereNull('deleted_at')
+                    ->update([
+                        'active' => true,
+                        'updated_at' => $now,
+                    ]);
                 continue;
             }
 
@@ -97,6 +151,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        // Non-destructive seed migration; nothing to roll back.
+        // Keep tenant and templates; this is a data repair migration.
     }
 };
