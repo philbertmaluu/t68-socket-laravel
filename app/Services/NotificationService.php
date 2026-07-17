@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domains\Feedback\Services\FeedbackService;
 use App\Domains\Ticket\Models\Ticket;
 use App\Domains\Notification\Services\NotificationTemplateService;
 use Illuminate\Support\Facades\Http;
@@ -11,7 +12,8 @@ use Exception;
 class NotificationService
 {
     public function __construct(
-        private NotificationTemplateService $notificationTemplateService
+        private NotificationTemplateService $notificationTemplateService,
+        private FeedbackService $feedbackService
     ) {
     }
 
@@ -207,20 +209,53 @@ class NotificationService
             ];
         }
 
-        $memberName = $ticket->member_name ?: 'Mwanachama';
+        $memberName = $ticket->member_name ?: '';
         $ticketNumber = $ticket->ticket_number;
         $serviceType = $ticket->service_type;
-        $duration = $ticket->duration_seconds 
-            ? round($ticket->duration_seconds / 60) . ' dakika' 
+        $locale = $ticket->locale ?: null;
+        $duration = $ticket->duration_seconds
+            ? round($ticket->duration_seconds / 60) . ($locale === 'en' ? ' minutes' : ' dakika')
             : '';
 
-        $message = "Ndugu {$memberName},\n";
-        $message .= "Huduma yako kwa tiketi namba {$ticketNumber} ({$serviceType}) imekamilika.\n";
-        if ($duration) {
-            $message .= "Muda uliotumika: {$duration}.\n";
+        $feedbackUrl = '';
+        try {
+            $feedback = $this->feedbackService->generateTicketFeedbackUrlForTicket($ticket);
+            $feedbackUrl = (string) ($feedback['url'] ?? '');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to generate feedback URL for ticket completed SMS', [
+                'ticket_number' => $ticketNumber,
+                'error' => $e->getMessage(),
+            ]);
         }
-        $message .= "Asante kwa kutumia huduma za NSSF.\n";
-        $message .= "Karibu tena!";
+
+        $template = $this->notificationTemplateService->findActiveByKeyAndLocale(
+            'ticket_completed_sms',
+            is_string($locale) ? $locale : null,
+            'sms'
+        );
+
+        if (!$template) {
+            Log::warning('Skipping ticket completed SMS: No active ticket_completed_sms template found', [
+                'ticket_number' => $ticketNumber,
+                'locale' => $locale,
+            ]);
+            return [
+                'success' => false,
+                'message' => 'No ticket_completed_sms template configured',
+                'data' => null,
+            ];
+        }
+
+        $message = $this->renderTemplate(
+            $template->body,
+            [
+                'memberName' => $memberName,
+                'ticketNumber' => $ticketNumber,
+                'serviceType' => $serviceType,
+                'duration' => $duration,
+                'feedbackUrl' => $feedbackUrl,
+            ]
+        );
 
         return $this->sendSms(
             recipient: $ticket->phone_number,

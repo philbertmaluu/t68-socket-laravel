@@ -103,6 +103,11 @@ class FeedbackService
             throw new \RuntimeException('Ticket not found for feedback QR');
         }
 
+        return $this->generateTicketFeedbackUrlForTicket($ticket);
+    }
+
+    public function generateTicketFeedbackUrlForTicket(Ticket $ticket): array
+    {
         $token = $this->tokenService->createTicketToken(
             (string) $ticket->tenant_id,
             (string) $ticket->id,

@@ -59,7 +59,7 @@ return new class extends Migration
                 'channel' => 'sms',
                 'locale' => 'sw',
                 'subject' => null,
-                'body' => "Ndugu {memberName},\nHuduma yako kwa tiketi namba {ticketNumber} ({serviceType}) imekamilika.\nAsante kwa kutumia huduma za NSSF.\nKaribu tena!",
+                'body' => "Ndugu {memberName},\nHuduma yako kwa tiketi namba {ticketNumber} ({serviceType}) imekamilika.\nTafadhali toa maoni yako: {feedbackUrl}\nAsante kwa kutumia huduma za NSSF.\nKaribu tena!",
                 'description' => 'SMS sent when a ticket is completed.',
                 'active' => true,
                 'created_by' => null,

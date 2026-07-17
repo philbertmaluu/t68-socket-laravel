@@ -67,68 +67,6 @@ class Ticket extends Model
         ];
     }
 
-    protected static function boot(): void
-    {
-        parent::boot();
-
-        /**
-         * When a ticket is created, automatically fire events:
-         * - TicketCreated: Triggers SendTicketCreatedSms listener (sends SMS)
-         * - QueueTicket job: DISABLED - Tickets are not automatically queued
-         *   (Tickets can be queued manually later if needed)
-         */
-        static::created(function (Ticket $ticket) {
-            event(new TicketCreated($ticket));
-            // QueueTicket::dispatch($ticket); // Disabled - tickets are not automatically queued
-        });
-
-        static::updating(function (Ticket $ticket) {
-            $ticket->oldStatus = $ticket->getOriginal('status');
-        });
-
-        static::updated(function (Ticket $ticket) {
-            $oldStatus = $ticket->oldStatus;
-            $newStatus = $ticket->status;
-            
-            $changedAttributes = array_keys($ticket->getChanges());
-            $onlyQueuePositionChanged = count($changedAttributes) === 1 && 
-                                       in_array('queue_position', $changedAttributes);
-
-            if (!$onlyQueuePositionChanged && $oldStatus !== $newStatus) {
-                $queueService = app(QueueService::class);
-                
-                if (in_array($newStatus, ['serving', 'completed', 'cancelled', 'skipped', 'hold', 'no_show', 'suspended'], true)) {
-                    $queueService->removeFromQueue($ticket);
-                } elseif ($newStatus === 'waiting' && $oldStatus !== 'waiting') {
-                    $queueService->addToQueue($ticket);
-                } elseif ($newStatus === 'paused') {
-                    // Keep assignment; do not re-queue or remove serving context.
-                } else {
-                    $queueService->recalculateQueuePositions($ticket->queue_id, $ticket->id);
-                }
-            }
-
-            if ($oldStatus !== $newStatus) {
-                event(new TicketStatusChanged($ticket, $oldStatus, $newStatus));
-            }
-
-            /**
-             * When ticket status changes, fire specific events:
-             * - TicketCompleted: Triggers SendTicketCompletedSms listener (sends SMS)
-             * - TicketCalled: Triggers BroadcastTicketCalled listener
-             * - TicketServing: Triggers BroadcastTicketServing listener
-             */
-            if ($oldStatus !== $newStatus) {
-                match ($newStatus) {
-                    'called' => event(new TicketCalled($ticket)),
-                    'serving' => event(new TicketServing($ticket)),
-                    'completed' => event(new TicketCompleted($ticket)), // Triggers SendTicketCompletedSms
-                    default => null,
-                };
-            }
-        });
-    }
-
     public static function getStatuses(): array
     {
         return [
@@ -189,4 +127,67 @@ class Ticket extends Model
     {
         return $this->belongsTo(\App\Domains\Tenant\Models\Tenant::class, 'tenant_id', 'id');
     }
+
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        /**
+         * When a ticket is created, automatically fire events:
+         * - TicketCreated: Triggers SendTicketCreatedSms listener (sends SMS)
+         * - QueueTicket job: DISABLED - Tickets are not automatically queued
+         *   (Tickets can be queued manually later if needed)
+         */
+        static::created(function (Ticket $ticket) {
+            event(new TicketCreated($ticket));
+            // QueueTicket::dispatch($ticket); // Disabled - tickets are not automatically queued
+        });
+
+        static::updating(function (Ticket $ticket) {
+            $ticket->oldStatus = $ticket->getOriginal('status');
+        });
+
+        static::updated(function (Ticket $ticket) {
+            $oldStatus = $ticket->oldStatus;
+            $newStatus = $ticket->status;
+            
+            $changedAttributes = array_keys($ticket->getChanges());
+            $onlyQueuePositionChanged = count($changedAttributes) === 1 && 
+                                       in_array('queue_position', $changedAttributes);
+
+            if (!$onlyQueuePositionChanged && $oldStatus !== $newStatus) {
+                $queueService = app(QueueService::class);
+                
+                if (in_array($newStatus, ['serving', 'completed', 'cancelled', 'skipped', 'hold', 'no_show', 'suspended'], true)) {
+                    $queueService->removeFromQueue($ticket);
+                } elseif ($newStatus === 'waiting' && $oldStatus !== 'waiting') {
+                    $queueService->addToQueue($ticket);
+                } elseif ($newStatus === 'paused') {
+                    // Keep assignment; do not re-queue or remove serving context.
+                } else {
+                    $queueService->recalculateQueuePositions($ticket->queue_id, $ticket->id);
+                }
+            }
+
+            if ($oldStatus !== $newStatus) {
+                event(new TicketStatusChanged($ticket, $oldStatus, $newStatus));
+            }
+
+            /**
+             * When ticket status changes, fire specific events:
+             * - TicketCompleted: Triggers SendTicketCompletedSms listener (sends SMS with feedback link)
+             * - TicketCalled: Triggers BroadcastTicketCalled listener
+             * - TicketServing: Triggers BroadcastTicketServing listener
+             */
+            if ($oldStatus !== $newStatus) {
+                match ($newStatus) {
+                    'called' => event(new TicketCalled($ticket)),
+                    'serving' => event(new TicketServing($ticket)),
+                    'completed' => event(new TicketCompleted($ticket)), // Triggers SendTicketCompletedSms
+                    default => null,
+                };
+            }
+        });
+    }
+
 }

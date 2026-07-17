@@ -52,7 +52,7 @@ class NotificationTemplateEnSeeder extends Seeder
                 'channel' => 'sms',
                 'locale' => 'en',
                 'subject' => null,
-                'body' => "Dear {memberName},\nYour service for ticket number {ticketNumber} ({serviceType}) has been completed.\nThank you for using NSSF services.\nWelcome again!",
+                'body' => "Dear {memberName},\nYour service for ticket number {ticketNumber} ({serviceType}) has been completed.\nPlease share your feedback: {feedbackUrl}\nThank you for using NSSF services.\nWelcome again!",
                 'description' => 'SMS sent when a ticket is completed (English).',
                 'active' => true,
                 'created_by' => null,
