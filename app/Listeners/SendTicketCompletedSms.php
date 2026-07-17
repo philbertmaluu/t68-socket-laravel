@@ -4,6 +4,7 @@ namespace App\Listeners;
 
 use App\Events\TicketCompleted;
 use App\Services\NotificationService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class SendTicketCompletedSms
@@ -24,8 +25,19 @@ class SendTicketCompletedSms
     {
         $ticket = $event->ticket;
 
+        $cacheKey = 'ticket_completed_sms_' . $ticket->id;
+        if (!Cache::add($cacheKey, true, now()->addDays(7))) {
+            Log::info('Skipping duplicate ticket completed SMS (cache hit)', [
+                'ticket_id' => $ticket->id,
+                'ticket_number' => $ticket->ticket_number,
+                'phone_number' => $ticket->phone_number,
+            ]);
+            return;
+        }
+
         // Only send SMS if phone number exists
         if (empty($ticket->phone_number)) {
+            Cache::forget($cacheKey);
             Log::debug('Skipping SMS notification for ticket completed: No phone number', [
                 'ticket_number' => $ticket->ticket_number,
             ]);
@@ -34,6 +46,7 @@ class SendTicketCompletedSms
 
         // Check if SMS notifications are enabled
         if (!config('services.ictms.enabled', true)) {
+            Cache::forget($cacheKey);
             Log::debug('SMS notifications are disabled', [
                 'ticket_number' => $ticket->ticket_number,
             ]);
