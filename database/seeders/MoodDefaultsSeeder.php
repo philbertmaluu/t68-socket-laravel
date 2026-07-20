@@ -22,11 +22,13 @@ class MoodDefaultsSeeder extends Seeder
                     'tenant_id' => null,
                     'locale' => $locale,
                     'theme' => json_encode([
-                        'primary_color' => '#1B4D89',
+                        'primary_color' => '#902D30',
                         'secondary_color' => '#2E7D32',
-                        'gradient_start' => '#0F2027',
-                        'gradient_end' => '#2C5364',
-                        'glass_opacity' => 0.15,
+                        'accent_color' => '#EAB308',
+                        'gold_color' => '#C9A227',
+                        'gradient_start' => '#902D30',
+                        'gradient_end' => '#5C1820',
+                        'glass_opacity' => 0.18,
                         'background_animation' => 'gradient_mesh',
                     ]),
                     'company' => json_encode([
