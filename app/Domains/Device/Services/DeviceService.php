@@ -5,6 +5,7 @@ namespace App\Domains\Device\Services;
 use App\Domains\Device\Models\Device;
 use App\Domains\Device\Models\DeviceToken;
 use App\Domains\Device\Repositories\DeviceRepository;
+use App\Domains\Mood\Models\MoodDeviceToken;
 use App\Shared\Helpers\TransactionHelper;
 use App\Traits\UserOfficeTrait;
 use Illuminate\Database\Eloquent\Collection;
@@ -176,8 +177,10 @@ class DeviceService
     {
         return TransactionHelper::execute(function () use ($device) {
             DeviceToken::where('device_id', $device->id)->delete();
-            $newKey = strtoupper(Str::random(10));
+            MoodDeviceToken::where('device_id', $device->id)->delete();
+            $newKey = Device::generateDeviceKey($device->type);
             $device->update(['device_key' => $newKey]);
+
             return $newKey;
         });
     }

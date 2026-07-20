@@ -2,6 +2,7 @@
 
 namespace App\Domains\Device\Requests;
 
+use App\Domains\Device\Models\Device;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -12,9 +13,19 @@ class UpdateDeviceRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('device_key') && is_string($this->input('device_key'))) {
+            $this->merge([
+                'device_key' => strtoupper(trim($this->input('device_key'))),
+            ]);
+        }
+    }
+
     public function rules(): array
     {
         $deviceId = $this->route('device');
+        $keyLength = $this->deviceKeyLength();
 
         return [
             'name' => ['sometimes', 'string', 'max:200'],
@@ -36,11 +47,23 @@ class UpdateDeviceRequest extends FormRequest
                 'sometimes',
                 'nullable',
                 'string',
-                'size:10',
-                'regex:/^[A-Z0-9]{10}$/',
+                "size:{$keyLength}",
+                "regex:/^[A-Z0-9]{{$keyLength}}$/",
                 Rule::unique('devices', 'device_key')->ignore($deviceId),
             ],
             'notes' => ['nullable', 'string'],
         ];
+    }
+
+    private function deviceKeyLength(): int
+    {
+        $type = $this->input('type');
+
+        if ($type === null && $this->route('device')) {
+            $device = Device::query()->find($this->route('device'));
+            $type = $device?->type;
+        }
+
+        return Device::deviceKeyLengthForType(is_string($type) ? $type : null);
     }
 }

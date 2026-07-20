@@ -22,74 +22,12 @@ class MoodAuthService
      */
     public function login(array $credentials): array
     {
-        $name = trim((string) ($credentials['name'] ?? ''));
-        $password = (string) ($credentials['password'] ?? '');
         $deviceUuid = trim((string) ($credentials['device_uuid'] ?? ''));
+        $device = $this->resolveDevice($credentials);
 
-        if ($name === '' || $password === '') {
-            throw new \InvalidArgumentException('Device name and password are required');
-        }
+        $this->assertDeviceCanAuthenticate($device);
 
-        $device = Device::withoutGlobalScope('tenant')
-            ->where(function ($query) use ($name) {
-                $query->where('name', $name)
-                    ->orWhereRaw('LOWER(TRIM(name)) = ?', [strtolower($name)]);
-            })
-            ->first();
-
-        if (!$device || !$device->isMoodChecker()) {
-            throw new \RuntimeException('Invalid device credentials');
-        }
-
-        $storedPlain = $device->decrypted_password;
-        if ($storedPlain === null || $password !== $storedPlain) {
-            throw new \RuntimeException('Invalid device credentials');
-        }
-
-        if ($device->status === Device::STATUS_MAINTENANCE) {
-            throw new \RuntimeException('Device is in maintenance and cannot authenticate');
-        }
-
-        if ($device->isMoodCounterMode() && empty($device->counter_id)) {
-            throw new \RuntimeException('Counter mode device must have a counter assigned');
-        }
-
-        return TransactionHelper::execute(function () use ($device, $deviceUuid) {
-            MoodDeviceToken::where('device_id', $device->id)->delete();
-
-            if ($deviceUuid !== '') {
-                $device->update(['device_uuid' => $deviceUuid]);
-            } elseif (empty($device->device_uuid)) {
-                $device->update(['device_uuid' => (string) Str::uuid()]);
-            }
-
-            $device->refresh();
-
-            $accessExpiresAt = now()->addDay();
-            $refreshExpiresAt = now()->addDays(30);
-
-            $token = MoodDeviceToken::create([
-                'device_id' => $device->id,
-                'access_token' => Str::random(64),
-                'refresh_token' => Str::random(64),
-                'device_uuid' => $device->device_uuid,
-                'access_expires_at' => $accessExpiresAt,
-                'refresh_expires_at' => $refreshExpiresAt,
-            ]);
-
-            $device->update([
-                'status' => Device::STATUS_ONLINE,
-                'last_seen' => now(),
-            ]);
-
-            return [
-                'device' => $this->formatDevice($device),
-                'access_token' => $token->access_token,
-                'refresh_token' => $token->refresh_token,
-                'token_type' => 'Bearer',
-                'expires_in' => now()->diffInSeconds($accessExpiresAt),
-            ];
-        });
+        return $this->issueSession($device, $deviceUuid);
     }
 
     public function logout(Device $device): void
@@ -165,5 +103,97 @@ class MoodAuthService
             'device_uuid' => (string) ($device->device_uuid ?? ''),
             'tenant_id' => (int) $device->tenant_id,
         ];
+    }
+
+    private function resolveDevice(array $credentials): Device
+    {
+        $deviceKey = strtoupper(trim((string) ($credentials['device_key'] ?? '')));
+        $name = trim((string) ($credentials['name'] ?? ''));
+        $password = (string) ($credentials['password'] ?? '');
+
+        if ($deviceKey !== '') {
+            $device = $this->deviceRepository->findByDeviceKey($deviceKey);
+            if (!$device || !$device->isMoodChecker()) {
+                throw new \RuntimeException('Invalid device credentials');
+            }
+
+            return $device;
+        }
+
+        if ($name === '' || $password === '') {
+            throw new \InvalidArgumentException('Provide either device_key or both name and password');
+        }
+
+        $device = Device::withoutGlobalScope('tenant')
+            ->where(function ($query) use ($name) {
+                $query->where('name', $name)
+                    ->orWhereRaw('LOWER(TRIM(name)) = ?', [strtolower($name)]);
+            })
+            ->first();
+
+        if (!$device || !$device->isMoodChecker()) {
+            throw new \RuntimeException('Invalid device credentials');
+        }
+
+        $storedPlain = $device->decrypted_password;
+        if ($storedPlain === null || $password !== $storedPlain) {
+            throw new \RuntimeException('Invalid device credentials');
+        }
+
+        return $device;
+    }
+
+    private function assertDeviceCanAuthenticate(Device $device): void
+    {
+        if ($device->status === Device::STATUS_MAINTENANCE) {
+            throw new \RuntimeException('Device is in maintenance and cannot authenticate');
+        }
+
+        if ($device->isMoodCounterMode() && empty($device->counter_id)) {
+            throw new \RuntimeException('Counter mode device must have a counter assigned');
+        }
+    }
+
+    /**
+     * @return array{device: array<string, mixed>, access_token: string, refresh_token: string, token_type: string, expires_in: int}
+     */
+    private function issueSession(Device $device, string $deviceUuid): array
+    {
+        return TransactionHelper::execute(function () use ($device, $deviceUuid) {
+            MoodDeviceToken::where('device_id', $device->id)->delete();
+
+            if ($deviceUuid !== '') {
+                $device->update(['device_uuid' => $deviceUuid]);
+            } elseif (empty($device->device_uuid)) {
+                $device->update(['device_uuid' => (string) Str::uuid()]);
+            }
+
+            $device->refresh();
+
+            $accessExpiresAt = now()->addDay();
+            $refreshExpiresAt = now()->addDays(30);
+
+            $token = MoodDeviceToken::create([
+                'device_id' => $device->id,
+                'access_token' => Str::random(64),
+                'refresh_token' => Str::random(64),
+                'device_uuid' => $device->device_uuid,
+                'access_expires_at' => $accessExpiresAt,
+                'refresh_expires_at' => $refreshExpiresAt,
+            ]);
+
+            $device->update([
+                'status' => Device::STATUS_ONLINE,
+                'last_seen' => now(),
+            ]);
+
+            return [
+                'device' => $this->formatDevice($device),
+                'access_token' => $token->access_token,
+                'refresh_token' => $token->refresh_token,
+                'token_type' => 'Bearer',
+                'expires_in' => now()->diffInSeconds($accessExpiresAt),
+            ];
+        });
     }
 }

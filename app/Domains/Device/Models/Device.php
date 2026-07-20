@@ -65,6 +65,9 @@ class Device extends Model
     public const STATUS_OFFLINE = 'offline';
     public const STATUS_MAINTENANCE = 'maintenance';
 
+    public const DEVICE_KEY_LENGTH_KIOSK = 10;
+    public const DEVICE_KEY_LENGTH_MOOD = 5;
+
     protected static function boot(): void
     {
         parent::boot();
@@ -73,11 +76,29 @@ class Device extends Model
             if ($device->isDirty('password') && !empty($device->password)) {
                 $device->password = Crypt::encryptString($device->password);
             }
-            // Auto-generate device_key on create if not provided (10 chars: A-Z and 0-9)
             if ($device->exists === false && empty($device->device_key)) {
-                $device->device_key = strtoupper(Str::random(10));
+                $device->device_key = self::generateDeviceKey($device->type);
             }
         });
+    }
+
+    public static function deviceKeyLengthForType(?string $type): int
+    {
+        $normalized = strtoupper(str_replace('-', '_', trim((string) $type)));
+
+        return in_array($normalized, [self::TYPE_MOOD_CHECKER, 'MOOD'], true)
+            ? self::DEVICE_KEY_LENGTH_MOOD
+            : self::DEVICE_KEY_LENGTH_KIOSK;
+    }
+
+    public static function generateDeviceKey(?string $type): string
+    {
+        return strtoupper(Str::random(self::deviceKeyLengthForType($type)));
+    }
+
+    public function deviceKeyLength(): int
+    {
+        return self::deviceKeyLengthForType($this->type);
     }
 
     public function getDecryptedPasswordAttribute(): ?string

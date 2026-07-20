@@ -50,6 +50,21 @@ class MoodCheckerFeatureTest extends TestCase
             ]);
     }
 
+    public function test_mood_login_with_device_key(): void
+    {
+        $device = $this->createMoodDevice(Device::MOOD_MODE_GENERAL);
+        $device->update(['device_key' => 'AB12C']);
+
+        $response = $this->postJson('/api/qms/mood/login', [
+            'device_key' => 'AB12C',
+            'device_uuid' => 'test-device-uuid-key',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.device.id', (string) $device->id);
+    }
+
     public function test_general_feedback_submission(): void
     {
         $device = $this->createMoodDevice(Device::MOOD_MODE_GENERAL);
@@ -197,6 +212,7 @@ class MoodCheckerFeatureTest extends TestCase
             'region_id' => 'region-1',
             'office_id' => 'office-1',
             'serial_number' => 'MOOD-'.Str::upper(Str::random(8)),
+            'device_key' => Str::upper(Str::random(5)),
             'password' => Crypt::encryptString('secret123'),
             'created_at' => now(),
             'updated_at' => now(),
