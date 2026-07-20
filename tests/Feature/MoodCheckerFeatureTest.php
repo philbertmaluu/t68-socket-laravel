@@ -65,6 +65,17 @@ class MoodCheckerFeatureTest extends TestCase
             ->assertJsonPath('data.device.id', (string) $device->id);
     }
 
+    public function test_mood_login_with_legacy_ten_char_device_key(): void
+    {
+        $device = $this->createMoodDevice(Device::MOOD_MODE_GENERAL);
+        $device->update(['device_key' => 'LEGACYKEY1']);
+
+        $this->postJson('/api/qms/mood/login', [
+            'device_key' => 'LEGACYKEY1',
+            'device_uuid' => 'legacy-uuid-001',
+        ])->assertOk()->assertJsonPath('success', true);
+    }
+
     public function test_general_feedback_submission(): void
     {
         $device = $this->createMoodDevice(Device::MOOD_MODE_GENERAL);

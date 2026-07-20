@@ -58,7 +58,9 @@ class DeviceService
         return TransactionHelper::execute(function () use ($device, $data) {
             if (array_key_exists('password', $data) || array_key_exists('device_key', $data)) {
                 DeviceToken::where('device_id', $device->id)->delete();
+                MoodDeviceToken::where('device_id', $device->id)->delete();
             }
+
             return $this->repository->update($device, $data);
         });
     }
@@ -66,6 +68,9 @@ class DeviceService
     public function deleteDevice(Device $device, bool $force = false): bool
     {
         return TransactionHelper::execute(function () use ($device, $force) {
+            DeviceToken::where('device_id', $device->id)->delete();
+            MoodDeviceToken::where('device_id', $device->id)->delete();
+
             return $this->repository->delete($device, $force);
         });
     }

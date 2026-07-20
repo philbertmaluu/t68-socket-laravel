@@ -30,7 +30,8 @@ class MoodLoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'device_key' => ['nullable', 'string', 'size:5', 'regex:/^[A-Z0-9]{5}$/'],
+            // Accept legacy 10-char keys until all devices are normalized to 5.
+            'device_key' => ['nullable', 'string', 'min:5', 'max:10', 'regex:/^[A-Z0-9]+$/'],
             'name' => ['nullable', 'string', 'max:200'],
             'password' => ['nullable', 'string'],
             'device_uuid' => ['nullable', 'string', 'max:64'],
