@@ -30,6 +30,10 @@ class Device extends Model
         'ip_address',
         'password',
         'device_key',
+        'counter_id',
+        'mood_mode',
+        'device_uuid',
+        'mood_config',
         'last_seen',
         'notes',
         'created_by',
@@ -38,6 +42,7 @@ class Device extends Model
     ];
 
     protected $casts = [
+        'mood_config' => 'array',
         'last_seen' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -51,6 +56,10 @@ class Device extends Model
 
     public const TYPE_KIOSK = 'KIOSK';
     public const TYPE_TV = 'TV';
+    public const TYPE_MOOD_CHECKER = 'MOOD_CHECKER';
+
+    public const MOOD_MODE_GENERAL = 'GENERAL';
+    public const MOOD_MODE_COUNTER = 'COUNTER';
 
     public const STATUS_ONLINE = 'online';
     public const STATUS_OFFLINE = 'offline';
@@ -109,6 +118,21 @@ class Device extends Model
         return $this->type === self::TYPE_TV;
     }
 
+    public function isMoodChecker(): bool
+    {
+        return $this->type === self::TYPE_MOOD_CHECKER;
+    }
+
+    public function isMoodCounterMode(): bool
+    {
+        return $this->mood_mode === self::MOOD_MODE_COUNTER;
+    }
+
+    public function isMoodGeneralMode(): bool
+    {
+        return $this->mood_mode === self::MOOD_MODE_GENERAL;
+    }
+
     public function updateLastSeen(): bool
     {
         return $this->update(['last_seen' => now()]);
@@ -119,6 +143,7 @@ class Device extends Model
         return [
             self::TYPE_KIOSK,
             self::TYPE_TV,
+            self::TYPE_MOOD_CHECKER,
         ];
     }
 

@@ -28,6 +28,7 @@ require app_path('Domains/Authentication/routes.php');
 Route::prefix('qms')->group(function () {
     require app_path('Domains/Ticket/routes.php');
     require app_path('Domains/Feedback/routes.php');
+    require app_path('Domains/Mood/routes.php');
     Route::post('devices/authenticate', [DeviceAuthController::class, 'authenticate']);
     Route::get('public/services', [PublicServiceController::class, 'index']);
 });

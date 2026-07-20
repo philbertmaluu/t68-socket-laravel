@@ -18,7 +18,9 @@ class UpdateDeviceRequest extends FormRequest
 
         return [
             'name' => ['sometimes', 'string', 'max:200'],
-            'type' => ['sometimes', 'string', Rule::in(['kiosk', 'tv'])],
+            'type' => ['sometimes', 'string', Rule::in(['kiosk', 'tv', 'mood_checker', 'mood-checker'])],
+            'mood_mode' => ['nullable', 'string', Rule::in(['GENERAL', 'COUNTER', 'general', 'counter'])],
+            'counter_id' => ['nullable', 'string', 'max:50'],
             'status' => ['sometimes', 'string', Rule::in(['online', 'offline', 'maintenance'])],
             'region_id' => ['sometimes', 'string', 'max:50'],
             'office_id' => ['sometimes', 'string', 'max:50'],

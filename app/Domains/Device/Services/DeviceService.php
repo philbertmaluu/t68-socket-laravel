@@ -39,6 +39,7 @@ class DeviceService
 
     public function createDevice(array $data): Device
     {
+        $data = $this->normalizeDevicePayload($data);
         $data = $this->fillOfficeRegionFromHrpIfMissing($data);
         $this->validateDeviceData($data);
 
@@ -49,6 +50,7 @@ class DeviceService
 
     public function updateDevice(Device $device, array $data): Device
     {
+        $data = $this->normalizeDevicePayload($data);
         $data = $this->fillOfficeRegionFromHrpIfMissing($data);
         $this->validateDeviceData($data, $device);
 
@@ -182,6 +184,13 @@ class DeviceService
 
     private function validateDeviceData(array $data, ?Device $device = null): void
     {
+        if (($data['type'] ?? null) === Device::TYPE_MOOD_CHECKER) {
+            $mode = strtoupper((string) ($data['mood_mode'] ?? ''));
+            if ($mode === Device::MOOD_MODE_COUNTER && empty($data['counter_id'])) {
+                throw new \InvalidArgumentException('Counter mode mood devices require counter_id');
+            }
+        }
+
         if (isset($data['serial_number'])) {
             $existing = $this->repository->findBySerialNumber($data['serial_number']);
             if ($existing && (!$device || $existing->id !== $device->id)) {
@@ -225,5 +234,32 @@ class DeviceService
             ])
             ->values()
             ->all();
+    }
+
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function normalizeDevicePayload(array $data): array
+    {
+        if (isset($data['type'])) {
+            $type = strtolower(str_replace('-', '_', (string) $data['type']));
+            $data['type'] = match ($type) {
+                'tv' => Device::TYPE_TV,
+                'mood_checker', 'mood' => Device::TYPE_MOOD_CHECKER,
+                default => Device::TYPE_KIOSK,
+            };
+        }
+
+        if (isset($data['mood_mode'])) {
+            $data['mood_mode'] = strtoupper((string) $data['mood_mode']);
+        }
+
+        if (($data['type'] ?? null) === Device::TYPE_MOOD_CHECKER && empty($data['mood_mode'])) {
+            $data['mood_mode'] = Device::MOOD_MODE_GENERAL;
+        }
+
+        return $data;
     }
 }

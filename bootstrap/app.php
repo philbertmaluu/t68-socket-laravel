@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'device.auth' => \App\Http\Middleware\EnsureDeviceAuthenticated::class,
+            'mood.device.auth' => \App\Http\Middleware\EnsureMoodDeviceAuthenticated::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
