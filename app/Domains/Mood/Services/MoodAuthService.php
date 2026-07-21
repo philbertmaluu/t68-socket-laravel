@@ -160,7 +160,10 @@ class MoodAuthService
     private function issueSession(Device $device, string $deviceUuid): array
     {
         return TransactionHelper::execute(function () use ($device, $deviceUuid) {
-            MoodDeviceToken::where('device_id', $device->id)->delete();
+            // Hard-delete so a concurrent login cannot leave the active token soft-deleted.
+            MoodDeviceToken::withTrashed()
+                ->where('device_id', $device->id)
+                ->forceDelete();
 
             if ($deviceUuid !== '') {
                 $device->update(['device_uuid' => $deviceUuid]);
