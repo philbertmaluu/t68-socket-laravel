@@ -76,6 +76,37 @@ class MoodCheckerFeatureTest extends TestCase
         ])->assertOk()->assertJsonPath('success', true);
     }
 
+    public function test_mood_login_rebinds_device_uuid_from_previous_device(): void
+    {
+        $old = $this->createMoodDevice(Device::MOOD_MODE_GENERAL);
+        $old->update([
+            'device_key' => 'OLD01',
+            'device_uuid' => 'shared-tablet-uuid',
+        ]);
+
+        $new = $this->createMoodDevice(Device::MOOD_MODE_COUNTER, counterId: 'counter-9');
+        $new->update(['device_key' => 'NEW01']);
+
+        $response = $this->postJson('/api/qms/mood/login', [
+            'device_key' => 'NEW01',
+            'device_uuid' => 'shared-tablet-uuid',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.device.id', (string) $new->id)
+            ->assertJsonPath('data.device.device_uuid', 'shared-tablet-uuid');
+
+        $this->assertDatabaseHas('devices', [
+            'id' => $new->id,
+            'device_uuid' => 'shared-tablet-uuid',
+        ]);
+        $this->assertDatabaseHas('devices', [
+            'id' => $old->id,
+            'device_uuid' => null,
+        ]);
+    }
+
     public function test_general_feedback_submission(): void
     {
         $device = $this->createMoodDevice(Device::MOOD_MODE_GENERAL);

@@ -166,7 +166,7 @@ class MoodAuthService
                 ->forceDelete();
 
             if ($deviceUuid !== '') {
-                $device->update(['device_uuid' => $deviceUuid]);
+                $this->bindDeviceUuid($device, $deviceUuid);
             } elseif (empty($device->device_uuid)) {
                 $device->update(['device_uuid' => (string) Str::uuid()]);
             }
@@ -198,5 +198,34 @@ class MoodAuthService
                 'expires_in' => now()->diffInSeconds($accessExpiresAt),
             ];
         });
+    }
+
+    /**
+     * Bind a physical tablet UUID to this device.
+     * If another device already owns the UUID (same machine logging into a new
+     * device key), release it first so Oracle unique index is not violated.
+     */
+    private function bindDeviceUuid(Device $device, string $deviceUuid): void
+    {
+        if ((string) $device->device_uuid === $deviceUuid) {
+            return;
+        }
+
+        $owners = Device::withoutGlobalScope('tenant')
+            ->where('device_uuid', $deviceUuid)
+            ->where('id', '!=', $device->id)
+            ->get();
+
+        foreach ($owners as $owner) {
+            MoodDeviceToken::withTrashed()
+                ->where('device_id', $owner->id)
+                ->forceDelete();
+            $owner->update([
+                'device_uuid' => null,
+                'status' => Device::STATUS_OFFLINE,
+            ]);
+        }
+
+        $device->update(['device_uuid' => $deviceUuid]);
     }
 }
