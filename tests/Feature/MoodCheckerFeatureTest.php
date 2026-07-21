@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Domains\Device\Models\Device;
+use App\Domains\Mood\Models\MoodCounterFeedback;
 use App\Domains\Mood\Models\MoodFeedbackSession;
 use App\Domains\Mood\Models\MoodGeneralFeedback;
 use App\Domains\Mood\Services\MoodAuthService;
+use App\Domains\Mood\Services\MoodFeedbackAdminService;
 use App\Domains\Mood\Services\MoodFeedbackSessionService;
 use App\Domains\Ticket\Models\Ticket;
 use App\Events\TicketCompleted;
@@ -249,6 +251,72 @@ class MoodCheckerFeatureTest extends TestCase
             'device_id' => $device->id,
             'ticket_id' => $ticket->id,
         ]);
+    }
+
+    public function test_admin_list_feedbacks_scoped_to_office(): void
+    {
+        $officeDevice = $this->createMoodDevice(Device::MOOD_MODE_GENERAL);
+        $otherDevice = $this->createMoodDevice(Device::MOOD_MODE_GENERAL);
+        $otherDevice->update(['office_id' => 'office-2']);
+
+        MoodGeneralFeedback::create([
+            'client_uuid' => (string) Str::uuid(),
+            'tenant_id' => 1,
+            'branch_id' => 'office-1',
+            'device_id' => $officeDevice->id,
+            'rating_option_id' => null,
+            'rating_score' => 5,
+            'reason_id' => null,
+            'comment' => 'Great service',
+            'submitted_at' => now(),
+            'synced_from_offline' => false,
+        ]);
+
+        MoodGeneralFeedback::create([
+            'client_uuid' => (string) Str::uuid(),
+            'tenant_id' => 1,
+            'branch_id' => 'office-2',
+            'device_id' => $otherDevice->id,
+            'rating_option_id' => null,
+            'rating_score' => 1,
+            'reason_id' => null,
+            'comment' => 'Other office',
+            'submitted_at' => now(),
+            'synced_from_offline' => false,
+        ]);
+
+        $counterDevice = $this->createMoodDevice(Device::MOOD_MODE_COUNTER, counterId: '21');
+        MoodCounterFeedback::create([
+            'client_uuid' => (string) Str::uuid(),
+            'session_id' => null,
+            'tenant_id' => 1,
+            'ticket_id' => '99',
+            'counter_id' => '21',
+            'officer_id' => 'clerk-1',
+            'device_id' => $counterDevice->id,
+            'rating_option_id' => null,
+            'rating_score' => 4,
+            'reason_id' => null,
+            'comment' => null,
+            'submitted_at' => now()->subMinute(),
+            'synced_from_offline' => false,
+        ]);
+
+        $result = (new MoodFeedbackAdminService())
+            ->listForOffice('office-1');
+
+        $this->assertSame(2, $result['summary']['total']);
+        $this->assertSame(1, $result['summary']['general']);
+        $this->assertSame(1, $result['summary']['counter']);
+        $this->assertCount(2, $result['items']);
+        $this->assertTrue(collect($result['items'])->every(
+            fn (array $row) => ($row['branch_id'] ?? '') === 'office-1'
+                || ($row['device_id'] ?? null) === (string) $counterDevice->id
+                || ($row['device_id'] ?? null) === (string) $officeDevice->id
+        ));
+        $this->assertFalse(collect($result['items'])->contains(
+            fn (array $row) => ($row['comment'] ?? null) === 'Other office'
+        ));
     }
 
     private function seedTenant(): void

@@ -46,4 +46,14 @@ class MoodCounterFeedback extends Model
     {
         return $this->belongsTo(MoodFeedbackSession::class, 'session_id', 'id');
     }
+
+    public function ratingOption(): BelongsTo
+    {
+        return $this->belongsTo(MoodRatingOption::class, 'rating_option_id', 'id');
+    }
+
+    public function reason(): BelongsTo
+    {
+        return $this->belongsTo(MoodFeedbackReason::class, 'reason_id', 'id');
+    }
 }
