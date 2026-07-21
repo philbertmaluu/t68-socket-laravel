@@ -26,6 +26,7 @@ Route::prefix('mood')->group(function () {
         Route::get('general/reasons', [MoodFeedbackController::class, 'generalReasons']);
 
         Route::get('pending-session', [MoodFeedbackController::class, 'pendingSession']);
+        Route::get('current-ticket', [MoodFeedbackController::class, 'currentTicket']);
         Route::post('counter-feedback', [MoodFeedbackController::class, 'submitCounter']);
         Route::post('session/expire', [MoodFeedbackController::class, 'expireSession']);
         Route::post('session/complete', [MoodFeedbackController::class, 'completeSession']);

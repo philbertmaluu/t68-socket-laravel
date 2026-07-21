@@ -162,6 +162,32 @@ class MoodCheckerFeatureTest extends TestCase
         ]);
     }
 
+    public function test_current_ticket_for_counter_device(): void
+    {
+        $device = $this->createMoodDevice(Device::MOOD_MODE_COUNTER, counterId: 'counter-21');
+        $auth = $this->loginMoodDevice($device);
+
+        $empty = $this->getJson(
+            '/api/qms/mood/current-ticket',
+            $this->moodHeaders($auth['token'], $auth['device_uuid'])
+        );
+        $empty->assertOk()->assertJsonPath('data', null);
+
+        $ticket = $this->createTicket(
+            counterId: 'counter-21',
+            status: 'serving',
+            ticketNumber: 'A021',
+        );
+
+        $current = $this->getJson(
+            '/api/qms/mood/current-ticket',
+            $this->moodHeaders($auth['token'], $auth['device_uuid'])
+        );
+        $current->assertOk()
+            ->assertJsonPath('data.ticket_number', 'A021')
+            ->assertJsonPath('data.ticket_id', (string) $ticket->id);
+    }
+
     public function test_session_expire_endpoint(): void
     {
         $device = $this->createMoodDevice(Device::MOOD_MODE_COUNTER, counterId: 'counter-2');
@@ -291,22 +317,27 @@ class MoodCheckerFeatureTest extends TestCase
         return $headers;
     }
 
-    private function createTicket(string $counterId): Ticket
-    {
+    private function createTicket(
+        string $counterId,
+        string $status = 'completed',
+        ?string $ticketNumber = null,
+    ): Ticket {
         $this->seedTenant();
 
         Schema::disableForeignKeyConstraints();
 
         $ticketId = DB::table('tickets')->insertGetId([
             'tenant_id' => 1,
-            'ticket_number' => 'T'.random_int(1000, 9999),
+            'ticket_number' => $ticketNumber ?? ('T'.random_int(1000, 9999)),
             'service_type' => 'general',
             'queue_id' => 1,
-            'status' => 'completed',
+            'status' => $status,
             'office_id' => 'office-1',
             'counter_id' => $counterId,
             'clerk_id' => 'clerk-1',
-            'completed_at' => now(),
+            'called_at' => in_array($status, ['called', 'serving'], true) ? now() : null,
+            'serving_started_at' => $status === 'serving' ? now() : null,
+            'completed_at' => $status === 'completed' ? now() : null,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

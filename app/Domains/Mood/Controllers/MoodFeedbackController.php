@@ -69,6 +69,18 @@ class MoodFeedbackController extends BaseController
         }
     }
 
+    public function currentTicket(Request $request): JsonResponse
+    {
+        try {
+            $device = $request->attributes->get('mood_device');
+            $ticket = $this->sessionService->getCurrentServingTicket($device);
+
+            return $this->sendResponse($ticket, $ticket ? 'Current ticket retrieved' : 'No current ticket');
+        } catch (\Throwable $e) {
+            return $this->sendError($e->getMessage(), [], 500);
+        }
+    }
+
     public function submitCounter(SubmitMoodCounterFeedbackRequest $request): JsonResponse
     {
         try {

@@ -77,6 +77,38 @@ class MoodFeedbackSessionService
         return $session->fresh();
     }
 
+    /**
+     * Current called/serving ticket for this mood device's counter.
+     *
+     * @return array{ticket_id: string, ticket_number: string, status: string, counter_id: string}|null
+     */
+    public function getCurrentServingTicket(Device $device): ?array
+    {
+        $counterId = trim((string) ($device->counter_id ?? ''));
+        if ($counterId === '') {
+            return null;
+        }
+
+        $ticket = Ticket::query()
+            ->where('counter_id', $counterId)
+            ->whereIn('status', ['called', 'serving'])
+            ->orderByRaw("CASE status WHEN 'serving' THEN 0 WHEN 'called' THEN 1 ELSE 2 END")
+            ->orderByDesc('called_at')
+            ->orderByDesc('updated_at')
+            ->first();
+
+        if (!$ticket) {
+            return null;
+        }
+
+        return [
+            'ticket_id' => (string) $ticket->id,
+            'ticket_number' => (string) $ticket->ticket_number,
+            'status' => (string) $ticket->status,
+            'counter_id' => $counterId,
+        ];
+    }
+
     public function expireSession(MoodFeedbackSession $session): MoodFeedbackSession
     {
         if ($session->status === MoodFeedbackSession::STATUS_EXPIRED) {
