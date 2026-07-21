@@ -105,8 +105,8 @@ class NotificationTemplateRepository
                     $query->orWhere('tenant_id', $tenantId);
                 }
             })
-            // Tenant-specific rows first, then global defaults
-            ->orderByRaw('tenant_id IS NULL ASC')
+            // Tenant-specific rows first, then global defaults (Oracle-safe).
+            ->orderByRaw('CASE WHEN tenant_id IS NULL THEN 1 ELSE 0 END ASC')
             ->orderBy('locale');
 
         if ($channel !== null) {

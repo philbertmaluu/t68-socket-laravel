@@ -160,13 +160,25 @@ class MoodConfigurationService
         $locale = $locale ?: 'en';
         $tenantId = (int) $device->tenant_id;
 
+        $config = $this->findActiveConfig($tenantId, $locale);
+        if ($config === null && $locale !== 'en') {
+            $config = $this->findActiveConfig($tenantId, 'en');
+        }
+
+        return $config;
+    }
+
+    private function findActiveConfig(int $tenantId, string $locale): ?MoodConfiguration
+    {
+        // Prefer tenant-specific config over global defaults.
+        // Avoid `ORDER BY tenant_id IS NULL` — invalid on Oracle (ORA-00907).
         return MoodConfiguration::withoutGlobalScope('tenant')
             ->where(function ($query) use ($tenantId) {
                 $query->whereNull('tenant_id')->orWhere('tenant_id', $tenantId);
             })
             ->where('locale', $locale)
             ->where('active', true)
-            ->orderByRaw('tenant_id IS NULL ASC')
+            ->orderByRaw('CASE WHEN tenant_id IS NULL THEN 1 ELSE 0 END ASC')
             ->first();
     }
 }
