@@ -2,6 +2,7 @@
 
 namespace App\Domains\Mood\Services;
 
+use App\Domains\Feedback\Models\Feedback;
 use App\Domains\Mood\Models\MoodCounterFeedback;
 use App\Domains\Mood\Models\MoodFeedbackReason;
 use App\Domains\Mood\Models\MoodGeneralFeedback;
@@ -44,6 +45,10 @@ class MoodFeedbackAdminService
             $items = $items->merge($this->counterRows($officeId, $ratingScore));
         }
 
+        if ($type === 'all' || $type === 'link') {
+            $items = $items->merge($this->linkRows($officeId, $ratingScore));
+        }
+
         if ($search !== '') {
             $needle = mb_strtolower($search);
             $items = $items->filter(function (array $row) use ($needle) {
@@ -54,7 +59,9 @@ class MoodFeedbackAdminService
                     $row['comment'] ?? null,
                     $row['counter_id'] ?? null,
                     $row['ticket_id'] ?? null,
+                    $row['ticket_number'] ?? null,
                     $row['officer_id'] ?? null,
+                    $row['source'] ?? null,
                 ])));
 
                 return str_contains($haystack, $needle);
@@ -97,6 +104,7 @@ class MoodFeedbackAdminService
                 'id' => 'general-'.$row->id,
                 'source_id' => (string) $row->id,
                 'type' => 'general',
+                'channel' => 'mood_tablet',
                 'rating_score' => (int) $row->rating_score,
                 'rating_emoji' => $option?->emoji,
                 'rating_title' => $option?->title,
@@ -106,7 +114,9 @@ class MoodFeedbackAdminService
                 'device_name' => $row->device?->name,
                 'counter_id' => null,
                 'ticket_id' => null,
+                'ticket_number' => null,
                 'officer_id' => null,
+                'source' => 'mood-checker',
                 'branch_id' => (string) $row->branch_id,
                 'submitted_at' => optional($row->submitted_at)->toIso8601String(),
                 'synced_from_offline' => (bool) $row->synced_from_offline,
@@ -146,6 +156,7 @@ class MoodFeedbackAdminService
                 'id' => 'counter-'.$row->id,
                 'source_id' => (string) $row->id,
                 'type' => 'counter',
+                'channel' => 'mood_tablet',
                 'rating_score' => (int) $row->rating_score,
                 'rating_emoji' => $option?->emoji,
                 'rating_title' => $option?->title,
@@ -155,10 +166,56 @@ class MoodFeedbackAdminService
                 'device_name' => $row->device?->name,
                 'counter_id' => $row->counter_id ? (string) $row->counter_id : null,
                 'ticket_id' => $row->ticket_id ? (string) $row->ticket_id : null,
+                'ticket_number' => null,
                 'officer_id' => $row->officer_id ? (string) $row->officer_id : null,
+                'source' => 'mood-checker',
                 'branch_id' => (string) ($row->session?->branch_id ?? $row->device?->office_id ?? ''),
                 'submitted_at' => optional($row->submitted_at)->toIso8601String(),
                 'synced_from_offline' => (bool) $row->synced_from_offline,
+            ];
+        })->all();
+    }
+
+    /**
+     * Feedback submitted via SMS/QR link (`feedbacks` table).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function linkRows(string $officeId, ?int $ratingScore): array
+    {
+        $query = Feedback::query()
+            ->where('office_id', $officeId)
+            ->orderByDesc('submitted_at');
+
+        if ($ratingScore !== null) {
+            $query->where('rating', $ratingScore);
+        }
+
+        return $query->get()->map(function (Feedback $row) {
+            $comment = $row->comment_text
+                ?: $row->comment_label
+                ?: $row->general_comment;
+
+            return [
+                'id' => 'link-'.$row->id,
+                'source_id' => (string) $row->id,
+                'type' => 'link',
+                'channel' => (string) ($row->feedback_type ?? 'general'),
+                'rating_score' => (int) $row->rating,
+                'rating_emoji' => null,
+                'rating_title' => null,
+                'reason_title' => $row->comment_label ?: $row->comment_key,
+                'comment' => $comment,
+                'device_id' => null,
+                'device_name' => null,
+                'counter_id' => null,
+                'ticket_id' => $row->ticket_id ? (string) $row->ticket_id : null,
+                'ticket_number' => $row->ticket_number ? (string) $row->ticket_number : null,
+                'officer_id' => $row->clerk_id ? (string) $row->clerk_id : null,
+                'source' => $row->source ? (string) $row->source : 'feedback-link',
+                'branch_id' => (string) ($row->office_id ?? ''),
+                'submitted_at' => optional($row->submitted_at)->toIso8601String(),
+                'synced_from_offline' => false,
             ];
         })->all();
     }
@@ -206,6 +263,7 @@ class MoodFeedbackAdminService
         $total = $items->count();
         $general = $items->where('type', 'general')->count();
         $counter = $items->where('type', 'counter')->count();
+        $link = $items->where('type', 'link')->count();
         $avg = $total > 0
             ? round((float) $items->avg('rating_score'), 2)
             : 0.0;
@@ -216,6 +274,7 @@ class MoodFeedbackAdminService
             'total' => $total,
             'general' => $general,
             'counter' => $counter,
+            'link' => $link,
             'average_score' => $avg,
             'positive' => $positive,
             'negative' => $negative,

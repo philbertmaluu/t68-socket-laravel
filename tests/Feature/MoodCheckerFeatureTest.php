@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Domains\Device\Models\Device;
+use App\Domains\Feedback\Models\Feedback;
 use App\Domains\Mood\Models\MoodCounterFeedback;
 use App\Domains\Mood\Models\MoodFeedbackSession;
 use App\Domains\Mood\Models\MoodGeneralFeedback;
@@ -302,20 +303,49 @@ class MoodCheckerFeatureTest extends TestCase
             'synced_from_offline' => false,
         ]);
 
+        Feedback::create([
+            'tenant_id' => 1,
+            'feedback_type' => Feedback::TYPE_TICKET,
+            'rating' => 5,
+            'comment_key' => 'fast_service',
+            'comment_label' => 'Fast service',
+            'comment_text' => 'From SMS link',
+            'ticket_id' => null,
+            'ticket_number' => 'T9001',
+            'clerk_id' => 'clerk-9',
+            'office_id' => 'office-1',
+            'source' => 'feedback-page',
+            'submitted_at' => now()->subSeconds(30),
+        ]);
+
+        Feedback::create([
+            'tenant_id' => 1,
+            'feedback_type' => Feedback::TYPE_TICKET,
+            'rating' => 2,
+            'comment_text' => 'Other office link',
+            'ticket_number' => 'T9002',
+            'office_id' => 'office-2',
+            'source' => 'feedback-page',
+            'submitted_at' => now(),
+        ]);
+
         $result = (new MoodFeedbackAdminService())
             ->listForOffice('office-1');
 
-        $this->assertSame(2, $result['summary']['total']);
+        $this->assertSame(3, $result['summary']['total']);
         $this->assertSame(1, $result['summary']['general']);
         $this->assertSame(1, $result['summary']['counter']);
-        $this->assertCount(2, $result['items']);
-        $this->assertTrue(collect($result['items'])->every(
-            fn (array $row) => ($row['branch_id'] ?? '') === 'office-1'
-                || ($row['device_id'] ?? null) === (string) $counterDevice->id
-                || ($row['device_id'] ?? null) === (string) $officeDevice->id
+        $this->assertSame(1, $result['summary']['link']);
+        $this->assertCount(3, $result['items']);
+        $this->assertTrue(collect($result['items'])->contains(
+            fn (array $row) => ($row['type'] ?? null) === 'link'
+                && ($row['ticket_number'] ?? null) === 'T9001'
         ));
         $this->assertFalse(collect($result['items'])->contains(
             fn (array $row) => ($row['comment'] ?? null) === 'Other office'
+        ));
+        $this->assertFalse(collect($result['items'])->contains(
+            fn (array $row) => ($row['comment'] ?? null) === 'Other office link'
         ));
     }
 
