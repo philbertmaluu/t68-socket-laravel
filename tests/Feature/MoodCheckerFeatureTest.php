@@ -286,13 +286,15 @@ class MoodCheckerFeatureTest extends TestCase
             'synced_from_offline' => false,
         ]);
 
-        $counterDevice = $this->createMoodDevice(Device::MOOD_MODE_COUNTER, counterId: '21');
+        $counterId = $this->seedCounter('Benefits Counter 1');
+        $counterDevice = $this->createMoodDevice(Device::MOOD_MODE_COUNTER, counterId: (string) $counterId);
+        $ticket = $this->createTicket((string) $counterId, ticketNumber: 'A042');
         MoodCounterFeedback::create([
             'client_uuid' => (string) Str::uuid(),
             'session_id' => null,
             'tenant_id' => 1,
-            'ticket_id' => '99',
-            'counter_id' => '21',
+            'ticket_id' => (string) $ticket->id,
+            'counter_id' => (string) $counterId,
             'officer_id' => 'clerk-1',
             'device_id' => $counterDevice->id,
             'rating_option_id' => null,
@@ -337,6 +339,11 @@ class MoodCheckerFeatureTest extends TestCase
         $this->assertSame(1, $result['summary']['counter']);
         $this->assertSame(1, $result['summary']['link']);
         $this->assertCount(3, $result['items']);
+        $this->assertTrue(collect($result['items'])->contains(
+            fn (array $row) => ($row['type'] ?? null) === 'counter'
+                && ($row['ticket_number'] ?? null) === 'A042'
+                && ($row['counter_name'] ?? null) === 'Benefits Counter 1'
+        ));
         $this->assertTrue(collect($result['items'])->contains(
             fn (array $row) => ($row['type'] ?? null) === 'link'
                 && ($row['ticket_number'] ?? null) === 'T9001'
@@ -413,6 +420,36 @@ class MoodCheckerFeatureTest extends TestCase
         }
 
         return $headers;
+    }
+
+    private function seedCounter(string $name): int
+    {
+        $this->seedTenant();
+
+        $existingId = DB::table('counters')->where('name', $name)->value('id');
+        if ($existingId) {
+            return (int) $existingId;
+        }
+
+        $counterTypeId = DB::table('counter_types')->insertGetId([
+            'tenant_id' => 1,
+            'name' => 'General',
+            'code' => 'GEN',
+            'description' => 'General Counter',
+            'status' => 'ACTIVE',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return (int) DB::table('counters')->insertGetId([
+            'tenant_id' => 1,
+            'name' => $name,
+            'counter_type_id' => $counterTypeId,
+            'status' => 'ACTIVE',
+            'office_id' => 'office-1',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function createTicket(

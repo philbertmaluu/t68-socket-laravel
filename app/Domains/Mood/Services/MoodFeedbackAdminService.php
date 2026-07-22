@@ -2,8 +2,9 @@
 
 namespace App\Domains\Mood\Services;
 
-use App\Domains\Feedback\Models\Feedback;
 use App\Domains\Authentication\Models\User;
+use App\Domains\Counter\Models\Counter;
+use App\Domains\Feedback\Models\Feedback;
 use App\Domains\Mood\Models\MoodCounterFeedback;
 use App\Domains\Mood\Models\MoodFeedbackReason;
 use App\Domains\Mood\Models\MoodGeneralFeedback;
@@ -59,6 +60,7 @@ class MoodFeedbackAdminService
                     $row['reason_title'] ?? null,
                     $row['comment'] ?? null,
                     $row['counter_id'] ?? null,
+                    $row['counter_name'] ?? null,
                     $row['ticket_id'] ?? null,
                     $row['ticket_number'] ?? null,
                     $row['officer_id'] ?? null,
@@ -115,6 +117,7 @@ class MoodFeedbackAdminService
                 'device_id' => $row->device_id ? (string) $row->device_id : null,
                 'device_name' => $row->device?->name,
                 'counter_id' => null,
+                'counter_name' => null,
                 'ticket_id' => null,
                 'ticket_number' => null,
                 'officer_id' => null,
@@ -136,7 +139,7 @@ class MoodFeedbackAdminService
             ->with([
                 'device:id,name,office_id',
                 'session:id,branch_id',
-                'ticket:id,clerk_id',
+                'ticket:id,clerk_id,ticket_number,counter_id',
             ])
             ->where(function ($q) use ($officeId) {
                 $q->whereHas('device', fn ($d) => $d->where('office_id', $officeId))
@@ -154,11 +157,16 @@ class MoodFeedbackAdminService
         $clerkIds = $rows->pluck('officer_id')
             ->merge($rows->map(fn (MoodCounterFeedback $row) => $row->ticket?->clerk_id));
         $clerkNames = $this->clerkNamesByIds($clerkIds);
+        $counterIds = $rows->pluck('counter_id')
+            ->merge($rows->map(fn (MoodCounterFeedback $row) => $row->ticket?->counter_id));
+        $counterNames = $this->counterNamesByIds($counterIds);
 
-        return $rows->map(function (MoodCounterFeedback $row) use ($options, $reasons, $clerkNames) {
+        return $rows->map(function (MoodCounterFeedback $row) use ($options, $reasons, $clerkNames, $counterNames) {
             $option = $options->get($row->rating_option_id);
             $reason = $reasons->get($row->reason_id);
             $clerkId = $row->officer_id ?: $row->ticket?->clerk_id;
+            $counterId = $row->counter_id ?: $row->ticket?->counter_id;
+            $ticketNumber = $row->ticket?->ticket_number;
 
             return [
                 'id' => 'counter-'.$row->id,
@@ -172,9 +180,10 @@ class MoodFeedbackAdminService
                 'comment' => $row->comment,
                 'device_id' => $row->device_id ? (string) $row->device_id : null,
                 'device_name' => $row->device?->name,
-                'counter_id' => $row->counter_id ? (string) $row->counter_id : null,
+                'counter_id' => $counterId ? (string) $counterId : null,
+                'counter_name' => $this->resolveCounterName($counterId ? (string) $counterId : null, $counterNames),
                 'ticket_id' => $row->ticket_id ? (string) $row->ticket_id : null,
-                'ticket_number' => null,
+                'ticket_number' => $ticketNumber ? (string) $ticketNumber : null,
                 'officer_id' => $clerkId ? (string) $clerkId : null,
                 'clerk_name' => $this->resolveClerkName($clerkId ? (string) $clerkId : null, $clerkNames),
                 'source' => 'mood-checker',
@@ -193,7 +202,7 @@ class MoodFeedbackAdminService
     private function linkRows(string $officeId, ?int $ratingScore): array
     {
         $query = Feedback::query()
-            ->with(['ticket:id,clerk_id'])
+            ->with(['ticket:id,clerk_id,ticket_number,counter_id'])
             ->where('office_id', $officeId)
             ->orderByDesc('submitted_at');
 
@@ -205,12 +214,16 @@ class MoodFeedbackAdminService
         $clerkIds = $rows->pluck('clerk_id')
             ->merge($rows->map(fn (Feedback $row) => $row->ticket?->clerk_id));
         $clerkNames = $this->clerkNamesByIds($clerkIds);
+        $counterIds = $rows->map(fn (Feedback $row) => $row->ticket?->counter_id);
+        $counterNames = $this->counterNamesByIds($counterIds);
 
-        return $rows->map(function (Feedback $row) use ($clerkNames) {
+        return $rows->map(function (Feedback $row) use ($clerkNames, $counterNames) {
             $comment = $row->comment_text
                 ?: $row->comment_label
                 ?: $row->general_comment;
             $clerkId = $row->clerk_id ?: $row->ticket?->clerk_id;
+            $counterId = $row->ticket?->counter_id;
+            $ticketNumber = $row->ticket_number ?: $row->ticket?->ticket_number;
 
             return [
                 'id' => 'link-'.$row->id,
@@ -224,9 +237,10 @@ class MoodFeedbackAdminService
                 'comment' => $comment,
                 'device_id' => null,
                 'device_name' => null,
-                'counter_id' => null,
+                'counter_id' => $counterId ? (string) $counterId : null,
+                'counter_name' => $this->resolveCounterName($counterId ? (string) $counterId : null, $counterNames),
                 'ticket_id' => $row->ticket_id ? (string) $row->ticket_id : null,
-                'ticket_number' => $row->ticket_number ? (string) $row->ticket_number : null,
+                'ticket_number' => $ticketNumber ? (string) $ticketNumber : null,
                 'officer_id' => $clerkId ? (string) $clerkId : null,
                 'clerk_name' => $this->resolveClerkName($clerkId ? (string) $clerkId : null, $clerkNames),
                 'source' => $row->source ? (string) $row->source : 'feedback-link',
@@ -280,6 +294,38 @@ class MoodFeedbackAdminService
         }
 
         return $names->get($clerkId);
+    }
+
+    /**
+     * @param  Collection<int, mixed>  $ids
+     * @return Collection<string, string>
+     */
+    private function counterNamesByIds(Collection $ids): Collection
+    {
+        $ids = $ids
+            ->filter(fn ($id) => $id !== null && (string) $id !== '')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return Counter::query()
+            ->select(['id', 'name'])
+            ->whereIn('id', $ids)
+            ->get()
+            ->mapWithKeys(fn (Counter $counter) => [(string) $counter->id => (string) $counter->name]);
+    }
+
+    private function resolveCounterName(?string $counterId, Collection $names): ?string
+    {
+        if ($counterId === null || $counterId === '') {
+            return null;
+        }
+
+        return $names->get($counterId);
     }
 
     /**
