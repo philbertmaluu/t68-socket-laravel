@@ -2,6 +2,7 @@
 
 namespace App\Domains\Mood\Services;
 
+use App\Domains\Counter\Models\Counter;
 use App\Domains\Device\Models\Device;
 use App\Domains\Mood\Models\MoodFeedbackSession;
 use App\Domains\Ticket\Models\Ticket;
@@ -80,7 +81,7 @@ class MoodFeedbackSessionService
     /**
      * Current called/serving ticket for this mood device's counter.
      *
-     * @return array{ticket_id: string, ticket_number: string, status: string, counter_id: string}|null
+     * @return array{ticket_id: string, ticket_number: string, status: string, counter_id: string, counter_name: string|null}|null
      */
     public function getCurrentServingTicket(Device $device): ?array
     {
@@ -88,6 +89,10 @@ class MoodFeedbackSessionService
         if ($counterId === '') {
             return null;
         }
+
+        $counterName = Counter::query()
+            ->where('id', $counterId)
+            ->value('name');
 
         $ticket = Ticket::query()
             ->where('counter_id', $counterId)
@@ -106,6 +111,7 @@ class MoodFeedbackSessionService
             'ticket_number' => (string) $ticket->ticket_number,
             'status' => (string) $ticket->status,
             'counter_id' => $counterId,
+            'counter_name' => $counterName ? (string) $counterName : null,
         ];
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Domains\Mood\Services;
 
+use App\Domains\Counter\Models\Counter;
 use App\Domains\Device\Models\Device;
 use App\Domains\Device\Repositories\DeviceRepository;
 use App\Domains\Mood\Models\MoodDeviceToken;
@@ -100,6 +101,7 @@ class MoodAuthService
             'branch_id' => (string) $device->office_id,
             'region_id' => (string) $device->region_id,
             'counter_id' => $device->counter_id ? (string) $device->counter_id : null,
+            'counter_name' => $this->resolveCounterName($device),
             'device_uuid' => (string) ($device->device_uuid ?? ''),
             'tenant_id' => (int) $device->tenant_id,
         ];
@@ -227,5 +229,17 @@ class MoodAuthService
         }
 
         $device->update(['device_uuid' => $deviceUuid]);
+    }
+
+    private function resolveCounterName(Device $device): ?string
+    {
+        $counterId = trim((string) ($device->counter_id ?? ''));
+        if ($counterId === '') {
+            return null;
+        }
+
+        $name = Counter::query()->where('id', $counterId)->value('name');
+
+        return $name ? (string) $name : null;
     }
 }
