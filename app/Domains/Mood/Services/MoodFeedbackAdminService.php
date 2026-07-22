@@ -3,6 +3,7 @@
 namespace App\Domains\Mood\Services;
 
 use App\Domains\Feedback\Models\Feedback;
+use App\Domains\Authentication\Models\User;
 use App\Domains\Mood\Models\MoodCounterFeedback;
 use App\Domains\Mood\Models\MoodFeedbackReason;
 use App\Domains\Mood\Models\MoodGeneralFeedback;
@@ -61,6 +62,7 @@ class MoodFeedbackAdminService
                     $row['ticket_id'] ?? null,
                     $row['ticket_number'] ?? null,
                     $row['officer_id'] ?? null,
+                    $row['clerk_name'] ?? null,
                     $row['source'] ?? null,
                 ])));
 
@@ -116,6 +118,7 @@ class MoodFeedbackAdminService
                 'ticket_id' => null,
                 'ticket_number' => null,
                 'officer_id' => null,
+                'clerk_name' => null,
                 'source' => 'mood-checker',
                 'branch_id' => (string) $row->branch_id,
                 'submitted_at' => optional($row->submitted_at)->toIso8601String(),
@@ -133,6 +136,7 @@ class MoodFeedbackAdminService
             ->with([
                 'device:id,name,office_id',
                 'session:id,branch_id',
+                'ticket:id,clerk_id',
             ])
             ->where(function ($q) use ($officeId) {
                 $q->whereHas('device', fn ($d) => $d->where('office_id', $officeId))
@@ -147,10 +151,14 @@ class MoodFeedbackAdminService
         $rows = $query->get();
         $options = $this->ratingOptionsById($rows->pluck('rating_option_id'));
         $reasons = $this->reasonsById($rows->pluck('reason_id'));
+        $clerkIds = $rows->pluck('officer_id')
+            ->merge($rows->map(fn (MoodCounterFeedback $row) => $row->ticket?->clerk_id));
+        $clerkNames = $this->clerkNamesByIds($clerkIds);
 
-        return $rows->map(function (MoodCounterFeedback $row) use ($options, $reasons) {
+        return $rows->map(function (MoodCounterFeedback $row) use ($options, $reasons, $clerkNames) {
             $option = $options->get($row->rating_option_id);
             $reason = $reasons->get($row->reason_id);
+            $clerkId = $row->officer_id ?: $row->ticket?->clerk_id;
 
             return [
                 'id' => 'counter-'.$row->id,
@@ -167,7 +175,8 @@ class MoodFeedbackAdminService
                 'counter_id' => $row->counter_id ? (string) $row->counter_id : null,
                 'ticket_id' => $row->ticket_id ? (string) $row->ticket_id : null,
                 'ticket_number' => null,
-                'officer_id' => $row->officer_id ? (string) $row->officer_id : null,
+                'officer_id' => $clerkId ? (string) $clerkId : null,
+                'clerk_name' => $this->resolveClerkName($clerkId ? (string) $clerkId : null, $clerkNames),
                 'source' => 'mood-checker',
                 'branch_id' => (string) ($row->session?->branch_id ?? $row->device?->office_id ?? ''),
                 'submitted_at' => optional($row->submitted_at)->toIso8601String(),
@@ -184,6 +193,7 @@ class MoodFeedbackAdminService
     private function linkRows(string $officeId, ?int $ratingScore): array
     {
         $query = Feedback::query()
+            ->with(['ticket:id,clerk_id'])
             ->where('office_id', $officeId)
             ->orderByDesc('submitted_at');
 
@@ -191,10 +201,16 @@ class MoodFeedbackAdminService
             $query->where('rating', $ratingScore);
         }
 
-        return $query->get()->map(function (Feedback $row) {
+        $rows = $query->get();
+        $clerkIds = $rows->pluck('clerk_id')
+            ->merge($rows->map(fn (Feedback $row) => $row->ticket?->clerk_id));
+        $clerkNames = $this->clerkNamesByIds($clerkIds);
+
+        return $rows->map(function (Feedback $row) use ($clerkNames) {
             $comment = $row->comment_text
                 ?: $row->comment_label
                 ?: $row->general_comment;
+            $clerkId = $row->clerk_id ?: $row->ticket?->clerk_id;
 
             return [
                 'id' => 'link-'.$row->id,
@@ -211,13 +227,59 @@ class MoodFeedbackAdminService
                 'counter_id' => null,
                 'ticket_id' => $row->ticket_id ? (string) $row->ticket_id : null,
                 'ticket_number' => $row->ticket_number ? (string) $row->ticket_number : null,
-                'officer_id' => $row->clerk_id ? (string) $row->clerk_id : null,
+                'officer_id' => $clerkId ? (string) $clerkId : null,
+                'clerk_name' => $this->resolveClerkName($clerkId ? (string) $clerkId : null, $clerkNames),
                 'source' => $row->source ? (string) $row->source : 'feedback-link',
                 'branch_id' => (string) ($row->office_id ?? ''),
                 'submitted_at' => optional($row->submitted_at)->toIso8601String(),
                 'synced_from_offline' => false,
             ];
         })->all();
+    }
+
+    /**
+     * @param  Collection<int, mixed>  $ids
+     * @return Collection<string, string>
+     */
+    private function clerkNamesByIds(Collection $ids): Collection
+    {
+        $ids = $ids
+            ->filter(fn ($id) => $id !== null && (string) $id !== '')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        $users = User::query()
+            ->select(['id', 'user_id', 'name'])
+            ->where(function ($query) use ($ids) {
+                $query->whereIn('id', $ids)->orWhereIn('user_id', $ids);
+            })
+            ->get();
+
+        $names = collect();
+        foreach ($users as $user) {
+            if ($user->name) {
+                $names[(string) $user->id] = (string) $user->name;
+                if ($user->user_id) {
+                    $names[(string) $user->user_id] = (string) $user->name;
+                }
+            }
+        }
+
+        return $names;
+    }
+
+    private function resolveClerkName(?string $clerkId, Collection $names): ?string
+    {
+        if ($clerkId === null || $clerkId === '') {
+            return null;
+        }
+
+        return $names->get($clerkId);
     }
 
     /**

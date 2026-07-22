@@ -47,6 +47,11 @@ class MoodCounterFeedback extends Model
         return $this->belongsTo(MoodFeedbackSession::class, 'session_id', 'id');
     }
 
+    public function ticket(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Ticket\Models\Ticket::class, 'ticket_id', 'id');
+    }
+
     public function ratingOption(): BelongsTo
     {
         return $this->belongsTo(MoodRatingOption::class, 'rating_option_id', 'id');
