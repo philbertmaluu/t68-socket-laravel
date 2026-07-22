@@ -254,6 +254,27 @@ class MoodCheckerFeatureTest extends TestCase
         ]);
     }
 
+    public function test_mood_device_counter_change_keeps_access_token(): void
+    {
+        $counterA = $this->seedCounter('Counter A');
+        $counterB = $this->seedCounter('Counter B');
+        $device = $this->createMoodDevice(Device::MOOD_MODE_COUNTER, counterId: (string) $counterA);
+        $auth = $this->loginMoodDevice($device);
+
+        $device->update(['counter_id' => (string) $counterB]);
+
+        $this->assertDatabaseHas('mood_device_tokens', [
+            'device_id' => $device->id,
+            'access_token' => $auth['token'],
+        ]);
+
+        $current = $this->getJson(
+            '/api/qms/mood/current-ticket',
+            $this->moodHeaders($auth['token'], $auth['device_uuid'])
+        );
+        $current->assertOk();
+    }
+
     public function test_admin_list_feedbacks_scoped_to_office(): void
     {
         $officeDevice = $this->createMoodDevice(Device::MOOD_MODE_GENERAL);
@@ -431,15 +452,18 @@ class MoodCheckerFeatureTest extends TestCase
             return (int) $existingId;
         }
 
-        $counterTypeId = DB::table('counter_types')->insertGetId([
-            'tenant_id' => 1,
-            'name' => 'General',
-            'code' => 'GEN',
-            'description' => 'General Counter',
-            'status' => 'ACTIVE',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $counterTypeId = DB::table('counter_types')->where('code', 'GEN')->value('id');
+        if (!$counterTypeId) {
+            $counterTypeId = DB::table('counter_types')->insertGetId([
+                'tenant_id' => 1,
+                'name' => 'General',
+                'code' => 'GEN',
+                'description' => 'General Counter',
+                'status' => 'ACTIVE',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         return (int) DB::table('counters')->insertGetId([
             'tenant_id' => 1,

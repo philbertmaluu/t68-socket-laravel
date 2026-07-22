@@ -6,6 +6,8 @@ use App\Domains\Device\Models\Device;
 use App\Domains\Device\Models\DeviceToken;
 use App\Domains\Device\Repositories\DeviceRepository;
 use App\Domains\Mood\Models\MoodDeviceToken;
+use App\Events\MoodConfigurationUpdated;
+use App\Events\MoodForceLogout;
 use App\Shared\Helpers\TransactionHelper;
 use App\Traits\UserOfficeTrait;
 use Illuminate\Database\Eloquent\Collection;
@@ -55,13 +57,36 @@ class DeviceService
         $data = $this->fillOfficeRegionFromHrpIfMissing($data);
         $this->validateDeviceData($data, $device);
 
-        return TransactionHelper::execute(function () use ($device, $data) {
-            if (array_key_exists('password', $data) || array_key_exists('device_key', $data)) {
+        $watchFields = ['counter_id', 'mood_mode', 'office_id', 'region_id', 'status', 'name'];
+        $before = $device->only($watchFields);
+        $revokeMoodSession = array_key_exists('password', $data)
+            || array_key_exists('device_key', $data);
+
+        return TransactionHelper::execute(function () use ($device, $data, $before, $watchFields, $revokeMoodSession) {
+            if ($revokeMoodSession) {
                 DeviceToken::where('device_id', $device->id)->delete();
                 MoodDeviceToken::where('device_id', $device->id)->delete();
             }
 
-            return $this->repository->update($device, $data);
+            $updated = $this->repository->update($device, $data);
+            $updated->refresh();
+
+            if ($updated->isMoodChecker()) {
+                if ($revokeMoodSession) {
+                    event(new MoodForceLogout($updated, 'credentials_changed'));
+                } else {
+                    $delta = $this->deviceConfigDelta($before, $updated, $watchFields, $data);
+                    if ($delta !== []) {
+                        event(new MoodConfigurationUpdated(
+                            $updated,
+                            (int) $updated->updated_at?->timestamp ?: time(),
+                            $delta
+                        ));
+                    }
+                }
+            }
+
+            return $updated;
         });
     }
 
@@ -70,6 +95,10 @@ class DeviceService
         return TransactionHelper::execute(function () use ($device, $force) {
             DeviceToken::where('device_id', $device->id)->delete();
             MoodDeviceToken::where('device_id', $device->id)->delete();
+
+            if ($device->isMoodChecker()) {
+                event(new MoodForceLogout($device, 'device_deleted'));
+            }
 
             return $this->repository->delete($device, $force);
         });
@@ -249,6 +278,36 @@ class DeviceService
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
+    /**
+     * @param  array<string, mixed>  $before
+     * @param  list<string>  $watchFields
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function deviceConfigDelta(
+        array $before,
+        Device $device,
+        array $watchFields,
+        array $payload,
+    ): array {
+        $delta = [];
+
+        foreach ($watchFields as $field) {
+            if (!array_key_exists($field, $payload)) {
+                continue;
+            }
+
+            $previous = $before[$field] ?? null;
+            $current = $device->{$field} ?? null;
+
+            if ((string) ($previous ?? '') !== (string) ($current ?? '')) {
+                $delta[$field] = $current;
+            }
+        }
+
+        return $delta;
+    }
+
     private function normalizeDevicePayload(array $data): array
     {
         if (isset($data['type'])) {
