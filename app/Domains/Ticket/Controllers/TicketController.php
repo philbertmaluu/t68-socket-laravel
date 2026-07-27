@@ -5,6 +5,7 @@ namespace App\Domains\Ticket\Controllers;
 use App\Domains\Ticket\Requests\StoreTicketRequest;
 use App\Domains\Ticket\Requests\SuspendTicketRequest;
 use App\Domains\Ticket\Requests\UpdateTicketRequest;
+use App\Domains\Ticket\Services\TicketAnnounceService;
 use App\Domains\Ticket\Services\TicketService;
 use App\Http\Controllers\BaseController;
 use Illuminate\Auth\AuthenticationException;
@@ -230,8 +231,21 @@ class TicketController extends BaseController
     public function callNextTicket(Request $request): JsonResponse
     {
         try {
-            $ticket = $this->service->callNextTicket();
-            return $this->sendResponse($ticket, 'Ticket called successfully');
+            $announceService = new TicketAnnounceService($this->service);
+            $result = $announceService->requestCallNext();
+
+            if (($result['status'] ?? '') === 'queued') {
+                return $this->sendResponse($result, $result['message'] ?? 'Call queued', [], 202);
+            }
+
+            $ticket = $result['ticket'] ?? $result;
+            return $this->sendResponse(
+                array_merge(is_array($ticket) ? $ticket : [], [
+                    'call_status' => 'called',
+                    'announce_id' => $result['announce_id'] ?? null,
+                ]),
+                'Ticket called successfully'
+            );
         } catch (AuthenticationException $e) {
             return $this->sendError($e->getMessage(), [], 401);
         } catch (NotFoundHttpException $e) {
@@ -240,6 +254,69 @@ class TicketController extends BaseController
             return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
             return $this->sendError('Failed to call next ticket', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function pendingAnnounce(Request $request): JsonResponse
+    {
+        try {
+            /** @var \App\Domains\Device\Models\Device $device */
+            $device = $request->attributes->get('device');
+            $announceService = new TicketAnnounceService($this->service);
+            $job = $announceService->getPendingAnnounceForDevice($device);
+            return $this->sendResponse($job, $job ? 'Pending announce retrieved' : 'No pending announce');
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve pending announce', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function announceAck(Request $request): JsonResponse
+    {
+        try {
+            /** @var \App\Domains\Device\Models\Device $device */
+            $device = $request->attributes->get('device');
+            $announceId = (string) $request->input('announce_id', '');
+            if ($announceId === '') {
+                return $this->sendError('announce_id is required', [], 422);
+            }
+
+            $announceService = new TicketAnnounceService($this->service);
+            $result = $announceService->acknowledgeAnnounce($device, $announceId);
+            return $this->sendResponse($result, 'Announce acknowledged');
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to acknowledge announce', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function myPendingCall(): JsonResponse
+    {
+        try {
+            $announceService = new TicketAnnounceService($this->service);
+            $result = $announceService->getMyPendingCall();
+            return $this->sendResponse($result, 'Pending call status retrieved');
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve pending call', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function cancelPendingCall(): JsonResponse
+    {
+        try {
+            $announceService = new TicketAnnounceService($this->service);
+            $count = $announceService->cancelMyPendingCalls();
+            return $this->sendResponse(['cancelled' => $count], 'Pending calls cancelled');
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to cancel pending calls', ['error' => $e->getMessage()], 500);
         }
     }
 

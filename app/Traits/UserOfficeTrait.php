@@ -18,6 +18,11 @@ trait UserOfficeTrait
             throw new AuthenticationException('User not authenticated.');
         }
 
+        return $this->getUserOfficeAndRegionFromHrpForUser($user);
+    }
+
+    public function getUserOfficeAndRegionFromHrpForUser(User $user): array
+    {
         $pfno = trim((string) ($user->user_id ?? ''));
 
         if ($pfno === '') {

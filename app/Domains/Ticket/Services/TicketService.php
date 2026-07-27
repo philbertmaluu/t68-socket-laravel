@@ -243,13 +243,21 @@ class TicketService
 
     public function callNextTicket(): array
     {
-        return TransactionHelper::execute(function () {
-            $user = Auth::guard('sanctum')->user();
-            if (!$user || !isset($user->id)) {
-                throw new AuthenticationException('User not authenticated');
-            }
+        $user = Auth::guard('sanctum')->user();
+        if (!$user || !isset($user->id)) {
+            throw new AuthenticationException('User not authenticated');
+        }
 
-            $location = $this->getUserOfficeAndRegionFromHrp();
+        return $this->callNextTicketForUser($user);
+    }
+
+    /**
+     * Call the next waiting ticket for a specific clerk (used by announce auto-call).
+     */
+    public function callNextTicketForUser(User $user): array
+    {
+        return TransactionHelper::execute(function () use ($user) {
+            $location = $this->getUserOfficeAndRegionFromHrpForUser($user);
             $officeId = (string) $location['office_id'];
             $clerkIds = $this->resolveClerkIdentityCandidates($user);
 
@@ -310,6 +318,14 @@ class TicketService
 
             return $this->formatClerkTicketPayload($ticket, $counter);
         });
+    }
+
+    /**
+     * Public wrapper for announce polling payloads.
+     */
+    public function formatClerkTicketPayloadPublic(Ticket $ticket, ?Counter $counter): array
+    {
+        return $this->formatClerkTicketPayload($ticket, $counter);
     }
 
     /**
