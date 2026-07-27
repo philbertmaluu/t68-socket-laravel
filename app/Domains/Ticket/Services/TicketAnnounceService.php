@@ -195,41 +195,15 @@ class TicketAnnounceService
     }
 
     /**
-     * Long-poll: hold until an announce job exists or timeout (seconds).
-     * Prefer this over tight client polling — wakes only when needed.
+     * Instant peek for announce (no sleep).
+     *
+     * NOTE: Do not sleep/hold PHP-FPM workers here — that queues board/UI
+     * requests and makes the TV feel stuck. Real push belongs on Reverb later.
      */
     public function waitPendingAnnounceForDevice(Device $device, int $timeoutSeconds = 20): ?array
     {
-        $officeId = (string) ($device->office_id ?? '');
-        if ($officeId === '') {
-            throw new UnprocessableEntityHttpException('Device is not assigned to an office');
-        }
-
-        $timeoutSeconds = max(1, min($timeoutSeconds, 25));
-        $deadline = microtime(true) + $timeoutSeconds;
-
-        // Immediate return if already pending.
-        $job = $this->getPendingAnnounceForDevice($device);
-        if ($job !== null) {
-            return $job;
-        }
-
-        // Sleep-poll on server: ~4–5 light PK checks/sec until job or timeout.
-        while (microtime(true) < $deadline) {
-            usleep(200_000); // 200ms
-
-            $payload = $this->peekPendingAnnounceForOffice($officeId);
-            if ($payload !== null) {
-                TicketAnnounceJob::query()
-                    ->where('id', $payload['announce_id'])
-                    ->where('status', TicketAnnounceJob::STATUS_PENDING)
-                    ->update(['status' => TicketAnnounceJob::STATUS_PLAYING]);
-
-                return $payload;
-            }
-        }
-
-        return null;
+        // Ignore timeout — return immediately so FPM workers stay free.
+        return $this->getPendingAnnounceForDevice($device);
     }
 
     public function acknowledgeAnnounce(Device $device, string $announceId): array
