@@ -272,6 +272,32 @@ class TicketController extends BaseController
         }
     }
 
+    /**
+     * Long-poll announce: holds until a job is ready or timeout (default 20s).
+     * Query: ?timeout=20 (max 25).
+     */
+    public function waitPendingAnnounce(Request $request): JsonResponse
+    {
+        try {
+            /** @var \App\Domains\Device\Models\Device $device */
+            $device = $request->attributes->get('device');
+            $timeout = (int) $request->query('timeout', 20);
+            $announceService = new TicketAnnounceService($this->service);
+            $job = $announceService->waitPendingAnnounceForDevice($device, $timeout);
+
+            if ($job === null) {
+                // 200 + null keeps clients simple (204 with empty body is awkward for our JSON envelope).
+                return $this->sendResponse(null, 'No pending announce (timeout)');
+            }
+
+            return $this->sendResponse($job, 'Pending announce ready');
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to wait for pending announce', ['error' => $e->getMessage()], 500);
+        }
+    }
+
     public function announceAck(Request $request): JsonResponse
     {
         try {
