@@ -4,7 +4,6 @@ use App\Domains\Device\Controllers\DeviceAuthController;
 use App\Domains\Ictms\Controllers\IctmsAccessController;
 use App\Domains\Ictms\Controllers\IctmsMonitoringController;
 use App\Domains\Service\Controllers\PublicServiceController;
-use App\Domains\Ticket\Controllers\TicketController;
 use Illuminate\Support\Facades\Route;
 
 // ICTMS Access Management (called by ICTMS server; no auth)
@@ -36,9 +35,6 @@ Route::prefix('qms')->group(function () {
 // Device-authenticated routes (X-Device-Token or Authorization: Bearer <device_token>)
 Route::prefix('qms')->middleware('device.auth')->group(function () {
     Route::patch('devices/me', [DeviceAuthController::class, 'updateSession']);
-
-    //get wating tickets and current serving tickets per office
-    Route::get('tickets/waiting-and-serving', [TicketController::class, 'getWaitingAndServingTicketsPerOffice']);
 });
 
 
