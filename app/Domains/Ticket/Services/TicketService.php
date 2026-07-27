@@ -6,6 +6,7 @@ use App\Domains\Authentication\Models\User;
 use App\Domains\Counter\Models\CounterClerk;
 use App\Domains\Counter\Models\Counter;
 use App\Domains\Counter\Services\CounterService;
+use App\Domains\Device\Models\Device;
 use App\Domains\Device\Models\DeviceToken;
 use App\Domains\Service\Models\Service;
 use App\Domains\Service\Services\ServiceService;
@@ -993,117 +994,148 @@ class TicketService
         });
     }
 
+    /**
+     * TV / device display board: waiting + currently serving tickets for the
+     * authenticated device's office (and tenant).
+     *
+     * @param  array{device_id?: string, office_id?: string, tenant_id?: int|string}  $filters
+     * @return array{
+     *   office_id: string,
+     *   office_name: string|null,
+     *   current_tickets: list<array<string, mixed>>,
+     *   waiting_tickets: list<array<string, mixed>>,
+     *   summary: array{total_current_tickets: int, total_waiting_tickets: int}
+     * }
+     */
     public function getWaitingAndServingTicketsPerOffice(array $filters = []): array
     {
-        return TransactionHelper::execute(function () use ($filters) {
-            Log::info('TV queue fetch: start', [
-                'has_device_id' => isset($filters['device_id']),
-                'has_office_id' => isset($filters['office_id']),
-                'device_id' => isset($filters['device_id']) ? (string) $filters['device_id'] : null,
-                'office_id_from_filters' => isset($filters['office_id']) ? (string) $filters['office_id'] : null,
-            ]);
+        $deviceId = isset($filters['device_id']) ? trim((string) $filters['device_id']) : '';
+        $officeId = null;
+        $tenantId = isset($filters['tenant_id']) ? (int) $filters['tenant_id'] : null;
 
-            $deviceId = isset($filters['device_id']) ? (string) $filters['device_id'] : null;
-            $officeId = null;
+        if ($deviceId !== '') {
+            $device = Device::withoutGlobalScope('tenant')
+                ->select(['id', 'office_id', 'tenant_id'])
+                ->find($deviceId);
 
-            if ($deviceId) {
-                Log::info('TV queue fetch: resolving office_id from device', [
-                    'device_id' => $deviceId,
-                ]);
-                $officeId = DB::table('devices')
-                    ->where('id', $deviceId)
-                    ->value('office_id');
-                Log::info('TV queue fetch: device office_id resolved', [
-                    'device_id' => $deviceId,
-                    'resolved_office_id' => $officeId ? (string) $officeId : null,
-                ]);
+            if ($device) {
+                $officeId = $device->office_id ? (string) $device->office_id : null;
+                if ($tenantId === null && !empty($device->tenant_id)) {
+                    $tenantId = (int) $device->tenant_id;
+                }
             }
+        }
 
-            if (!$officeId && isset($filters['office_id'])) {
-                Log::warning('TV queue fetch: falling back to office_id from filters', [
-                    'fallback_office_id' => (string) $filters['office_id'],
-                    'device_id' => $deviceId,
-                ]);
-                $officeId = (string) $filters['office_id'];
-            }
+        if (!$officeId && isset($filters['office_id'])) {
+            $officeId = trim((string) $filters['office_id']) ?: null;
+        }
 
-            if (!$officeId) {
-                Log::error('TV queue fetch: office_id resolution failed', [
-                    'device_id' => $deviceId,
-                    'filters' => $filters,
-                ]);
-                throw new UnprocessableEntityHttpException('Unable to resolve office_id from authenticated device');
-            }
+        if (!$officeId) {
+            throw new UnprocessableEntityHttpException(
+                'Unable to resolve office_id from authenticated device'
+            );
+        }
 
-            Log::info('TV queue fetch: querying current tickets', [
-                'office_id' => (string) $officeId,
-                'statuses' => ['serving', 'called'],
-            ]);
-            $currentTickets = Ticket::query()
-                ->leftJoin('queues as q', 'q.id', '=', 'tickets.queue_id')
-                ->where('tickets.office_id', $officeId)
-                ->whereIn('tickets.status', ['serving', 'called'])
-                ->orderByRaw("CASE tickets.status WHEN 'serving' THEN 0 WHEN 'called' THEN 1 ELSE 2 END")
-                ->orderByDesc('tickets.called_at')
-                ->orderByDesc('tickets.updated_at')
-                ->get([
-                    'tickets.id',
-                    'tickets.ticket_number',
-                    'tickets.service_type',
-                    'tickets.status',
-                    'tickets.queue_id',
-                    'tickets.counter_id',
-                    'tickets.called_at',
-                    'tickets.serving_started_at',
-                    'tickets.created_at',
-                    DB::raw('q.name as queue_name'),
-                ]);
-            Log::info('TV queue fetch: current tickets loaded', [
-                'office_id' => (string) $officeId,
-                'count' => $currentTickets->count(),
-            ]);
+        if ($tenantId) {
+            app()->instance('tenant.id', $tenantId);
+        }
 
-            Log::info('TV queue fetch: querying waiting tickets', [
-                'office_id' => (string) $officeId,
-                'status' => 'waiting',
-            ]);
-            $waitingTickets = Ticket::query()
-                ->leftJoin('queues as q', 'q.id', '=', 'tickets.queue_id')
-                ->where('tickets.office_id', $officeId)
-                ->where('tickets.status', 'waiting')
-                ->orderBy('tickets.queue_position')
-                ->orderBy('tickets.created_at')
-                ->get([
-                    'tickets.id',
-                    'tickets.ticket_number',
-                    'tickets.service_type',
-                    'tickets.status',
-                    'tickets.queue_id',
-                    'tickets.counter_id',
-                    'tickets.created_at',
-                    DB::raw('q.name as queue_name'),
-                ]);
-            Log::info('TV queue fetch: waiting tickets loaded', [
-                'office_id' => (string) $officeId,
-                'count' => $waitingTickets->count(),
-            ]);
+        $baseQuery = Ticket::withoutGlobalScope('tenant')
+            ->leftJoin('queues as q', 'q.id', '=', 'tickets.queue_id')
+            ->leftJoin('counters as c', 'c.id', '=', 'tickets.counter_id')
+            ->where('tickets.office_id', $officeId)
+            ->when($tenantId, fn ($q) => $q->where('tickets.tenant_id', $tenantId));
 
-            Log::info('TV queue fetch: success', [
-                'office_id' => (string) $officeId,
-                'total_current_tickets' => $currentTickets->count(),
-                'total_waiting_tickets' => $waitingTickets->count(),
-            ]);
+        $select = [
+            'tickets.id',
+            'tickets.ticket_number',
+            'tickets.service_type',
+            'tickets.status',
+            'tickets.queue_id',
+            'tickets.counter_id',
+            'tickets.queue_position',
+            'tickets.called_at',
+            'tickets.serving_started_at',
+            'tickets.created_at',
+            DB::raw('q.name as queue_name'),
+            DB::raw('c.name as counter_name'),
+        ];
 
-            return [
-                'office_id' => $officeId,
-                'current_tickets' => $currentTickets,
-                'waiting_tickets' => $waitingTickets,
-                'summary' => [
-                    'total_current_tickets' => $currentTickets->count(),
-                    'total_waiting_tickets' => $waitingTickets->count(),
-                ],
-            ];
-        });
+        $currentRows = (clone $baseQuery)
+            ->whereIn('tickets.status', ['serving', 'called'])
+            ->orderByRaw("CASE tickets.status WHEN 'serving' THEN 0 WHEN 'called' THEN 1 ELSE 2 END")
+            ->orderByDesc('tickets.called_at')
+            ->orderByDesc('tickets.updated_at')
+            ->get($select);
+
+        $waitingRows = (clone $baseQuery)
+            ->where('tickets.status', 'waiting')
+            ->orderBy('tickets.queue_position')
+            ->orderBy('tickets.created_at')
+            ->get($select);
+
+        $currentTickets = $currentRows->map(fn ($row) => $this->formatTvTicketRow($row))->values()->all();
+        $waitingTickets = $waitingRows->map(fn ($row) => $this->formatTvTicketRow($row))->values()->all();
+
+        return [
+            'office_id' => (string) $officeId,
+            'office_name' => $this->resolveOfficeName((string) $officeId),
+            'current_tickets' => $currentTickets,
+            'waiting_tickets' => $waitingTickets,
+            'summary' => [
+                'total_current_tickets' => count($currentTickets),
+                'total_waiting_tickets' => count($waitingTickets),
+            ],
+        ];
+    }
+
+    /**
+     * @param  object  $row
+     * @return array<string, mixed>
+     */
+    private function formatTvTicketRow(object $row): array
+    {
+        $counterName = isset($row->counter_name) && trim((string) $row->counter_name) !== ''
+            ? (string) $row->counter_name
+            : (isset($row->queue_name) && trim((string) $row->queue_name) !== ''
+                ? (string) $row->queue_name
+                : ($row->counter_id ? 'Counter '.$row->counter_id : null));
+
+        return [
+            'id' => (string) $row->id,
+            'ticket_number' => (string) $row->ticket_number,
+            'service_type' => $row->service_type ? (string) $row->service_type : null,
+            'status' => (string) $row->status,
+            'queue_id' => $row->queue_id !== null ? (string) $row->queue_id : null,
+            'queue_name' => isset($row->queue_name) && $row->queue_name !== null
+                ? (string) $row->queue_name
+                : null,
+            'counter_id' => $row->counter_id !== null ? (string) $row->counter_id : null,
+            'counter_name' => $counterName,
+            'queue_position' => isset($row->queue_position) ? (int) $row->queue_position : null,
+            'called_at' => isset($row->called_at) && $row->called_at
+                ? (string) $row->called_at
+                : null,
+            'serving_started_at' => isset($row->serving_started_at) && $row->serving_started_at
+                ? (string) $row->serving_started_at
+                : null,
+            'created_at' => isset($row->created_at) && $row->created_at
+                ? (string) $row->created_at
+                : null,
+        ];
+    }
+
+    private function resolveOfficeName(string $officeId): ?string
+    {
+        try {
+            $name = DB::table('hrpd.office')
+                ->where('office_id', $officeId)
+                ->value('office_name');
+
+            return $name ? (string) $name : null;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

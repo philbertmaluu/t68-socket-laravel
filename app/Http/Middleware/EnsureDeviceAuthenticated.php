@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Domains\Device\Models\Device;
 use App\Domains\Device\Models\DeviceToken;
 use Closure;
 use Illuminate\Http\Request;
@@ -33,7 +34,7 @@ class EnsureDeviceAuthenticated
             ], 401);
         }
 
-        $device = $tokenModel->device;
+        $device = Device::withoutGlobalScope('tenant')->find($tokenModel->device_id);
         if (!$device) {
             return response()->json([
                 'success' => false,
@@ -42,6 +43,10 @@ class EnsureDeviceAuthenticated
         }
 
         $tokenModel->update(['last_used_at' => now()]);
+
+        if (!empty($device->tenant_id)) {
+            app()->instance('tenant.id', $device->tenant_id);
+        }
 
         $request->attributes->set('device', $device);
         $request->setUserResolver(fn () => $device);

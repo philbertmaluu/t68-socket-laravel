@@ -94,6 +94,12 @@ class TicketController extends BaseController
 
             $tickets = $this->service->getWaitingAndServingTicketsPerOffice([
                 'device_id' => $deviceId,
+                'tenant_id' => is_object($device) && isset($device->tenant_id)
+                    ? (int) $device->tenant_id
+                    : null,
+                'office_id' => is_object($device) && isset($device->office_id)
+                    ? (string) $device->office_id
+                    : null,
             ]);
             return $this->sendResponse($tickets, 'Waiting and serving tickets retrieved successfully');
         } catch (UnprocessableEntityHttpException $e) {
