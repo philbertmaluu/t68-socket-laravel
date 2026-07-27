@@ -1043,6 +1043,7 @@ class TicketService
         $baseQuery = Ticket::withoutGlobalScope('tenant')
             ->leftJoin('queues as q', 'q.id', '=', 'tickets.queue_id')
             ->leftJoin('counters as c', 'c.id', '=', 'tickets.counter_id')
+            ->leftJoin('counter_types as ct', 'ct.id', '=', 'c.counter_type_id')
             ->where('tickets.office_id', $officeId)
             ->when($tenantId, fn ($q) => $q->where('tickets.tenant_id', $tenantId));
 
@@ -1059,6 +1060,8 @@ class TicketService
             'tickets.created_at',
             DB::raw('q.name as queue_name'),
             DB::raw('c.name as counter_name'),
+            DB::raw('ct.name as counter_type_name'),
+            DB::raw('ct.code as counter_type_code'),
         ];
 
         $currentRows = (clone $baseQuery)
@@ -1101,6 +1104,13 @@ class TicketService
                 ? (string) $row->queue_name
                 : ($row->counter_id ? 'Counter '.$row->counter_id : null));
 
+        $counterTypeName = isset($row->counter_type_name) && trim((string) $row->counter_type_name) !== ''
+            ? (string) $row->counter_type_name
+            : null;
+        $counterTypeCode = isset($row->counter_type_code) && trim((string) $row->counter_type_code) !== ''
+            ? (string) $row->counter_type_code
+            : null;
+
         return [
             'id' => (string) $row->id,
             'ticket_number' => (string) $row->ticket_number,
@@ -1112,6 +1122,8 @@ class TicketService
                 : null,
             'counter_id' => $row->counter_id !== null ? (string) $row->counter_id : null,
             'counter_name' => $counterName,
+            'counter_type_name' => $counterTypeName,
+            'counter_type_code' => $counterTypeCode,
             'queue_position' => isset($row->queue_position) ? (int) $row->queue_position : null,
             'called_at' => isset($row->called_at) && $row->called_at
                 ? (string) $row->called_at
