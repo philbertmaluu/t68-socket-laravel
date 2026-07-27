@@ -11,6 +11,8 @@ class PendingTicketCall extends Model
 
     protected $table = 'pending_ticket_calls';
 
+    public $timestamps = false;
+
     public const STATUS_WAITING = 'waiting';
     public const STATUS_PROCESSING = 'processing';
     public const STATUS_DONE = 'done';

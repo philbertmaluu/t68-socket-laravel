@@ -1085,22 +1085,29 @@ class TicketService
             ->orderByRaw("CASE tickets.status WHEN 'serving' THEN 0 WHEN 'called' THEN 1 ELSE 2 END")
             ->orderByDesc('tickets.called_at')
             ->orderByDesc('tickets.updated_at')
+            ->limit(8)
             ->get($select);
 
         $waitingRows = (clone $baseQuery)
             ->where('tickets.status', 'waiting')
             ->orderBy('tickets.queue_position')
             ->orderBy('tickets.created_at')
+            ->limit(5)
             ->get($select);
 
         $currentTickets = $currentRows->map(fn ($row) => $this->formatTvTicketRow($row))->values()->all();
         $waitingTickets = $waitingRows->map(fn ($row) => $this->formatTvTicketRow($row))->values()->all();
+
+        // PK lock + PK job — same response that paints Current Serving also carries audio job.
+        $pendingAnnouncement = (new TicketAnnounceService($this))
+            ->peekPendingAnnounceForOffice((string) $officeId);
 
         return [
             'office_id' => (string) $officeId,
             'office_name' => $this->resolveOfficeName((string) $officeId),
             'current_tickets' => $currentTickets,
             'waiting_tickets' => $waitingTickets,
+            'pending_announcement' => $pendingAnnouncement,
             'summary' => [
                 'total_current_tickets' => count($currentTickets),
                 'total_waiting_tickets' => count($waitingTickets),

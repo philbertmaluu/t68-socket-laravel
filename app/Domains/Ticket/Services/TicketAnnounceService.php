@@ -4,7 +4,6 @@ namespace App\Domains\Ticket\Services;
 
 use App\Domains\Authentication\Models\User;
 use App\Domains\Counter\Models\Counter;
-use App\Domains\Counter\Models\CounterClerk;
 use App\Domains\Device\Models\Device;
 use App\Domains\Ticket\Models\OfficeAnnounceLock;
 use App\Domains\Ticket\Models\PendingTicketCall;
@@ -34,9 +33,7 @@ class TicketAnnounceService
     }
 
     /**
-     * Call next with office announce serialization.
-     *
-     * @return array{status: string, message?: string, pending_id?: string, ticket?: array}
+     * @return array{status: string, message?: string, pending_id?: string, ticket?: array, announce_id?: string}
      */
     public function requestCallNext(): array
     {
@@ -50,20 +47,20 @@ class TicketAnnounceService
             $officeId = (string) $location['office_id'];
             $clerkId = (string) $user->id;
 
+            // Stale cleanup only on write path (not on TV polls).
             $this->releaseStaleLocksAndJobs($officeId);
-            $this->expireStalePendingCalls($officeId);
 
-            $existingPending = PendingTicketCall::query()
+            $existingPendingId = PendingTicketCall::query()
                 ->where('office_id', $officeId)
                 ->where('clerk_id', $clerkId)
                 ->where('status', PendingTicketCall::STATUS_WAITING)
                 ->orderBy('requested_at')
-                ->first();
+                ->value('id');
 
-            if ($existingPending) {
+            if ($existingPendingId) {
                 return [
                     'status' => 'queued',
-                    'pending_id' => $existingPending->id,
+                    'pending_id' => $existingPendingId,
                     'message' => 'Wait — another ticket is being announced. Yours will be called automatically.',
                 ];
             }
@@ -103,7 +100,50 @@ class TicketAnnounceService
     }
 
     /**
-     * Next pending/playing announce job for the device office.
+     * Ultra-light peek for board poll — PK lock row then PK job. No writes.
+     */
+    public function peekPendingAnnounceForOffice(string $officeId): ?array
+    {
+        if ($officeId === '') {
+            return null;
+        }
+
+        $lock = OfficeAnnounceLock::query()
+            ->select(['current_announce_id', 'is_announcing', 'started_at'])
+            ->where('office_id', $officeId)
+            ->first();
+
+        if (!$lock || !$lock->is_announcing || !$lock->current_announce_id) {
+            return null;
+        }
+
+        // Soft TTL check without write — skip stale ids quickly.
+        if ($lock->started_at && $lock->started_at->lt(now()->subSeconds(self::LOCK_TTL_SECONDS))) {
+            return null;
+        }
+
+        $job = TicketAnnounceJob::query()
+            ->select([
+                'id',
+                'ticket_number',
+                'counter_name',
+                'counter_type_name',
+                'counter_type_code',
+                'status',
+            ])
+            ->where('id', $lock->current_announce_id)
+            ->whereIn('status', [
+                TicketAnnounceJob::STATUS_PENDING,
+                TicketAnnounceJob::STATUS_PLAYING,
+            ])
+            ->first();
+
+        return $job?->toAnnouncePayload();
+    }
+
+    /**
+     * Dedicated poll — still light: prefer lock PK, fallback to covering index.
+     * No stale-release, no full transaction.
      */
     public function getPendingAnnounceForDevice(Device $device): ?array
     {
@@ -112,10 +152,18 @@ class TicketAnnounceService
             throw new UnprocessableEntityHttpException('Device is not assigned to an office');
         }
 
-        return TransactionHelper::execute(function () use ($officeId) {
-            $this->releaseStaleLocksAndJobs($officeId);
-
+        $payload = $this->peekPendingAnnounceForOffice($officeId);
+        if ($payload === null) {
+            // Fallback when lock row missing but a pending job exists.
             $job = TicketAnnounceJob::query()
+                ->select([
+                    'id',
+                    'ticket_number',
+                    'counter_name',
+                    'counter_type_name',
+                    'counter_type_code',
+                    'status',
+                ])
                 ->where('office_id', $officeId)
                 ->whereIn('status', [
                     TicketAnnounceJob::STATUS_PENDING,
@@ -129,16 +177,23 @@ class TicketAnnounceService
             }
 
             if ($job->status === TicketAnnounceJob::STATUS_PENDING) {
-                $job->update(['status' => TicketAnnounceJob::STATUS_PLAYING]);
+                TicketAnnounceJob::query()
+                    ->where('id', $job->id)
+                    ->where('status', TicketAnnounceJob::STATUS_PENDING)
+                    ->update(['status' => TicketAnnounceJob::STATUS_PLAYING]);
             }
 
             return $job->toAnnouncePayload();
-        });
+        }
+
+        TicketAnnounceJob::query()
+            ->where('id', $payload['announce_id'])
+            ->where('status', TicketAnnounceJob::STATUS_PENDING)
+            ->update(['status' => TicketAnnounceJob::STATUS_PLAYING]);
+
+        return $payload;
     }
 
-    /**
-     * TV finished playing an announce job.
-     */
     public function acknowledgeAnnounce(Device $device, string $announceId): array
     {
         $officeId = (string) ($device->office_id ?? '');
@@ -147,25 +202,30 @@ class TicketAnnounceService
         }
 
         return TransactionHelper::execute(function () use ($officeId, $announceId) {
-            $this->releaseStaleLocksAndJobs($officeId);
-
-            $job = TicketAnnounceJob::query()
+            $updated = TicketAnnounceJob::query()
                 ->where('id', $announceId)
                 ->where('office_id', $officeId)
-                ->first();
+                ->whereIn('status', [
+                    TicketAnnounceJob::STATUS_PENDING,
+                    TicketAnnounceJob::STATUS_PLAYING,
+                ])
+                ->update(['status' => TicketAnnounceJob::STATUS_DONE]);
 
-            if (!$job) {
-                throw new NotFoundHttpException('Announce job not found');
-            }
+            if ($updated === 0) {
+                $exists = TicketAnnounceJob::query()
+                    ->where('id', $announceId)
+                    ->where('office_id', $officeId)
+                    ->exists();
 
-            if (in_array($job->status, [TicketAnnounceJob::STATUS_DONE, TicketAnnounceJob::STATUS_EXPIRED], true)) {
+                if (!$exists) {
+                    throw new NotFoundHttpException('Announce job not found');
+                }
+
                 return [
                     'status' => 'already_done',
-                    'announce_id' => $job->id,
+                    'announce_id' => $announceId,
                 ];
             }
-
-            $job->update(['status' => TicketAnnounceJob::STATUS_DONE]);
 
             $lock = $this->lockOfficeRow($officeId);
             if ((string) $lock->current_announce_id === (string) $announceId || $lock->is_announcing) {
@@ -187,8 +247,6 @@ class TicketAnnounceService
     }
 
     /**
-     * Clerk polls while waiting in the announce queue.
-     *
      * @return array{status: string, pending_id?: string, message?: string, ticket?: array}
      */
     public function getMyPendingCall(): array
@@ -202,16 +260,15 @@ class TicketAnnounceService
         $officeId = (string) $location['office_id'];
         $clerkId = (string) $user->id;
 
-        $this->releaseStaleLocksAndJobs($officeId);
-        $this->expireStalePendingCalls($officeId);
-
         $pending = PendingTicketCall::query()
+            ->select(['id', 'status', 'ticket_id'])
             ->where('office_id', $officeId)
             ->where('clerk_id', $clerkId)
             ->whereIn('status', [
                 PendingTicketCall::STATUS_WAITING,
                 PendingTicketCall::STATUS_PROCESSING,
                 PendingTicketCall::STATUS_DONE,
+                PendingTicketCall::STATUS_CANCELLED,
             ])
             ->orderByDesc('requested_at')
             ->first();
@@ -262,9 +319,6 @@ class TicketAnnounceService
         ];
     }
 
-    /**
-     * Cancel waiting pending calls for the authenticated clerk.
-     */
     public function cancelMyPendingCalls(): int
     {
         $user = Auth::guard('sanctum')->user();
@@ -344,11 +398,18 @@ class TicketAnnounceService
         return TicketAnnounceJob::create([
             'office_id' => $officeId,
             'ticket_id' => $ticketPayload['id'] ?? null,
-            'ticket_number' => (string) ($ticketPayload['ticket_number'] ?? ''),
-            'counter_name' => isset($counter['name']) ? (string) $counter['name'] : null,
-            'counter_type_name' => isset($counterType['name']) ? (string) $counterType['name'] : null,
-            'counter_type_code' => isset($counterType['code']) ? (string) $counterType['code'] : null,
+            'ticket_number' => mb_substr((string) ($ticketPayload['ticket_number'] ?? ''), 0, 32),
+            'counter_name' => isset($counter['name'])
+                ? mb_substr((string) $counter['name'], 0, 32)
+                : null,
+            'counter_type_name' => isset($counterType['name'])
+                ? mb_substr((string) $counterType['name'], 0, 32)
+                : null,
+            'counter_type_code' => isset($counterType['code'])
+                ? mb_substr((string) $counterType['code'], 0, 24)
+                : null,
             'status' => TicketAnnounceJob::STATUS_PENDING,
+            'created_at' => now(),
         ]);
     }
 
@@ -366,6 +427,7 @@ class TicketAnnounceService
                     'is_announcing' => false,
                     'current_announce_id' => null,
                     'started_at' => null,
+                    'created_at' => now(),
                 ]
             );
 
@@ -391,7 +453,7 @@ class TicketAnnounceService
             $lockQuery->where('office_id', $officeId);
         }
 
-        $staleLocks = $lockQuery->get();
+        $staleLocks = $lockQuery->get(['office_id', 'current_announce_id']);
         foreach ($staleLocks as $lock) {
             if ($lock->current_announce_id) {
                 TicketAnnounceJob::query()
@@ -403,13 +465,14 @@ class TicketAnnounceService
                     ->update(['status' => TicketAnnounceJob::STATUS_EXPIRED]);
             }
 
-            $lock->update([
-                'is_announcing' => false,
-                'current_announce_id' => null,
-                'started_at' => null,
-            ]);
+            OfficeAnnounceLock::query()
+                ->where('office_id', $lock->office_id)
+                ->update([
+                    'is_announcing' => false,
+                    'current_announce_id' => null,
+                    'started_at' => null,
+                ]);
 
-            // Free the speaker slot so the next waiting clerk can be auto-called.
             try {
                 $this->processNextPendingCall((string) $lock->office_id);
             } catch (\Throwable $e) {
@@ -419,19 +482,6 @@ class TicketAnnounceService
                 ]);
             }
         }
-
-        $jobQuery = TicketAnnounceJob::query()
-            ->whereIn('status', [
-                TicketAnnounceJob::STATUS_PENDING,
-                TicketAnnounceJob::STATUS_PLAYING,
-            ])
-            ->where('created_at', '<', $cutoff);
-
-        if ($officeId !== null) {
-            $jobQuery->where('office_id', $officeId);
-        }
-
-        $jobQuery->update(['status' => TicketAnnounceJob::STATUS_EXPIRED]);
     }
 
     public function expireStalePendingCalls(?string $officeId = null): void
