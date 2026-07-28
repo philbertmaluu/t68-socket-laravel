@@ -61,7 +61,6 @@ class DashboardsController extends BaseController
     }
 
     /**
-     * GitHub-style heatmap feed: tickets per office per date for a given year.
      * GET /api/qms/dashboard/office-activities?year=2026
      */
     public function officeActivities(Request $request): JsonResponse
@@ -77,22 +76,80 @@ class DashboardsController extends BaseController
     }
 
     /**
-     * Actual tickets for a selected day (drawer when clicking the activity graph).
-     * GET /api/qms/dashboard/office-activities/tickets?date=2026-07-28
+     * GET /api/qms/dashboard/office-activities/tickets?date=YYYY-MM-DD
+     * or ?from=YYYY-MM-DD&to=YYYY-MM-DD
      */
     public function officeActivityTickets(Request $request): JsonResponse
     {
         try {
-            $date = trim((string) $request->query('date', ''));
-            if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-                return $this->sendError('Invalid or missing date. Use YYYY-MM-DD.', [], 422);
+            [$date, $from, $to, $error] = $this->resolveDateFilters($request);
+            if ($error !== null) {
+                return $this->sendError($error, [], 422);
             }
 
-            $result = $this->service->officeActivityTickets($date);
+            $result = $this->service->officeActivityTickets($date, $from, $to);
 
             return $this->sendResponse($result, 'Office activity tickets retrieved successfully');
         } catch (\Exception $e) {
             return $this->sendError('Failed to retrieve office activity tickets', ['error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * GET /api/qms/dashboard/office-activities/export?format=pdf|excel
+     * with date=YYYY-MM-DD or from=&to=
+     */
+    public function exportOfficeActivityTickets(Request $request)
+    {
+        try {
+            [$date, $from, $to, $error] = $this->resolveDateFilters($request);
+            if ($error !== null) {
+                return $this->sendError($error, [], 422);
+            }
+
+            $format = strtolower(trim((string) $request->query('format', 'pdf')));
+            if (!in_array($format, ['pdf', 'excel'], true)) {
+                return $this->sendError('Invalid format. Use pdf or excel.', [], 422);
+            }
+
+            $export = $this->service->exportOfficeActivityTickets($format, $date, $from, $to);
+
+            return response($export['content'], 200, [
+                'Content-Type' => $export['mime'],
+                'Content-Disposition' => 'attachment; filename="' . $export['filename'] . '"',
+                'Cache-Control' => 'no-store, no-cache, must-revalidate',
+            ]);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to export office activity tickets', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * @return array{0: string|null, 1: string|null, 2: string|null, 3: string|null}
+     */
+    private function resolveDateFilters(Request $request): array
+    {
+        $datePattern = '/^\d{4}-\d{2}-\d{2}$/';
+        $date = trim((string) $request->query('date', ''));
+        $from = trim((string) $request->query('from', ''));
+        $to = trim((string) $request->query('to', ''));
+
+        $hasRange = $from !== '' || $to !== '';
+        if ($hasRange) {
+            if ($from === '' || $to === '' || !preg_match($datePattern, $from) || !preg_match($datePattern, $to)) {
+                return [null, null, null, 'Invalid date range. Use from=YYYY-MM-DD&to=YYYY-MM-DD.'];
+            }
+            if ($from > $to) {
+                return [null, null, null, 'Invalid date range. "from" must be on or before "to".'];
+            }
+
+            return [null, $from, $to, null];
+        }
+
+        if ($date === '' || !preg_match($datePattern, $date)) {
+            return [null, null, null, 'Provide date=YYYY-MM-DD or from=&to= date range.'];
+        }
+
+        return [$date, null, null, null];
     }
 }

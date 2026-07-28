@@ -192,12 +192,15 @@ class DashboardService
     }
 
     /**
-     * Tickets for a single day (matches the office-activities graph cell click).
+     * Tickets for a day or date range (office-scoped).
      *
-     * @return array{date: string, tickets: list<array<string, mixed>>, meta: array{officeId: string|null, total: int}}
+     * @return array{date: string|null, from: string|null, to: string|null, tickets: list<array<string, mixed>>, meta: array{officeId: string|null, officeName: string|null, total: int}}
      */
-    public function officeActivityTickets(string $date): array
-    {
+    public function officeActivityTickets(
+        ?string $date = null,
+        ?string $from = null,
+        ?string $to = null
+    ): array {
         $user = Auth::guard('sanctum')->user();
         if (!$user) {
             throw new AuthenticationException('User not authenticated');
@@ -205,12 +208,20 @@ class DashboardService
 
         $location = $this->getUserOfficeAndRegionFromHrp();
         $officeId = trim((string) ($location['office_id'] ?? ''));
+        $officeName = isset($location['office_name']) ? (string) $location['office_name'] : null;
 
-        $dayStart = $date . ' 00:00:00';
-        $dayEnd = $date . ' 23:59:59';
+        if ($from && $to) {
+            $dayStart = $from . ' 00:00:00';
+            $dayEnd = $to . ' 23:59:59';
+        } else {
+            $date = $date ?: now()->toDateString();
+            $dayStart = $date . ' 00:00:00';
+            $dayEnd = $date . ' 23:59:59';
+            $from = null;
+            $to = null;
+        }
 
-        $query = Ticket::query()
-            ->whereBetween('created_at', [$dayStart, $dayEnd]);
+        $query = Ticket::query()->whereBetween('created_at', [$dayStart, $dayEnd]);
 
         if ($officeId !== '') {
             $query->where('office_id', $officeId);
@@ -269,13 +280,159 @@ class DashboardService
         })->values()->all();
 
         return [
-            'date' => $date,
+            'date' => $from && $to ? null : $date,
+            'from' => $from,
+            'to' => $to,
             'tickets' => $mapped,
             'meta' => [
                 'officeId' => $officeId !== '' ? $officeId : null,
+                'officeName' => $officeName,
                 'total' => count($mapped),
             ],
         ];
+    }
+
+    /**
+     * Export office tickets as PDF or Excel for a day or date range.
+     *
+     * @return array{format: string, filename: string, content: string, mime: string}
+     */
+    public function exportOfficeActivityTickets(
+        string $format,
+        ?string $date = null,
+        ?string $from = null,
+        ?string $to = null
+    ): array {
+        $payload = $this->officeActivityTickets($date, $from, $to);
+        $tickets = $payload['tickets'];
+        $officeId = $payload['meta']['officeId'] ?? null;
+        $officeName = $payload['meta']['officeName'] ?? null;
+
+        if (!$officeName && $officeId) {
+            $named = $this->withHrpOfficeNames(collect([[
+                'office_id' => (string) $officeId,
+                'office_name' => null,
+            ]]));
+            $officeName = $named->first()['office_name'] ?? null;
+        }
+
+        $services = collect($tickets)
+            ->pluck('serviceType')
+            ->filter(fn ($name) => is_string($name) && trim($name) !== '')
+            ->unique()
+            ->values()
+            ->all();
+
+        $counters = collect($tickets)
+            ->pluck('counterName')
+            ->filter(fn ($name) => is_string($name) && trim($name) !== '' && $name !== 'N/A')
+            ->unique()
+            ->values()
+            ->all();
+
+        $user = Auth::guard('sanctum')->user();
+        $generatedBy = trim((string) ($user?->name ?? $user?->email ?? 'System'));
+        if ($generatedBy === '') {
+            $generatedBy = 'System';
+        }
+
+        $safeOffice = preg_replace('/[^A-Za-z0-9_-]+/', '-', (string) ($officeName ?: 'office')) ?: 'office';
+        $isRange = $from && $to;
+        if ($isRange) {
+            $reportDate = \Carbon\Carbon::parse($from)->format('F j, Y')
+                . ' – '
+                . \Carbon\Carbon::parse($to)->format('F j, Y');
+            $dateKey = str_replace('-', '', $from) . '-' . str_replace('-', '', $to);
+        } else {
+            $date = $date ?: now()->toDateString();
+            $reportDate = \Carbon\Carbon::parse($date)->format('F j, Y');
+            $dateKey = str_replace('-', '', $date);
+        }
+
+        if ($format === 'excel') {
+            $csv = $this->buildOfficeTicketsCsv($tickets);
+            return [
+                'format' => 'excel',
+                'filename' => "office-activity-{$safeOffice}-{$dateKey}.csv",
+                'content' => $csv,
+                'mime' => 'text/csv; charset=UTF-8',
+            ];
+        }
+
+        $logoFile = public_path('images/nssf-logo.png');
+        $logoPath = null;
+        if (is_file($logoFile)) {
+            $logoPath = 'data:image/png;base64,' . base64_encode((string) file_get_contents($logoFile));
+        }
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.office.activity-report', [
+            'logoPath' => $logoPath,
+            'officeName' => $officeName ?: 'N/A',
+            'services' => $services,
+            'counters' => $counters,
+            'tickets' => $tickets,
+            'reportDate' => $reportDate,
+            'dateKey' => $dateKey,
+            'generatedAt' => now()->format('d M Y H:i'),
+            'generatedBy' => $generatedBy,
+        ])
+            ->setPaper('a4', 'landscape')
+            ->setOptions([
+                'isHtml5ParserEnabled' => true,
+                'isRemoteEnabled' => true,
+                'defaultFont' => 'DejaVu Sans',
+                'dpi' => 96,
+            ]);
+
+        return [
+            'format' => 'pdf',
+            'filename' => "office-activity-{$safeOffice}-{$dateKey}.pdf",
+            'content' => $pdf->output(),
+            'mime' => 'application/pdf',
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $tickets
+     */
+    private function buildOfficeTicketsCsv(array $tickets): string
+    {
+        $handle = fopen('php://temp', 'r+');
+        fwrite($handle, "\xEF\xBB\xBF");
+
+        fputcsv($handle, [
+            'Ticket',
+            'Service',
+            'Member Name',
+            'Member Number',
+            'Status',
+            'Created At',
+            'Completed At',
+            'Duration (min)',
+            'Clerk',
+            'Counter',
+        ]);
+
+        foreach ($tickets as $ticket) {
+            fputcsv($handle, [
+                $ticket['ticketNumber'] ?? '',
+                $ticket['serviceType'] ?? '',
+                $ticket['memberName'] ?? '',
+                $ticket['memberNumber'] ?? '',
+                $ticket['status'] ?? '',
+                $ticket['createdAt'] ?? '',
+                $ticket['completedAt'] ?? '',
+                $ticket['durationMinutes'] ?? 0,
+                $ticket['clerkName'] ?? '',
+                $ticket['counterName'] ?? '',
+            ]);
+        }
+
+        rewind($handle);
+        $csv = stream_get_contents($handle) ?: '';
+        fclose($handle);
+
+        return $csv;
     }
 
     private function activityLevel(int $count): int
