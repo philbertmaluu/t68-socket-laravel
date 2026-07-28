@@ -191,6 +191,93 @@ class DashboardService
         ];
     }
 
+    /**
+     * Tickets for a single day (matches the office-activities graph cell click).
+     *
+     * @return array{date: string, tickets: list<array<string, mixed>>, meta: array{officeId: string|null, total: int}}
+     */
+    public function officeActivityTickets(string $date): array
+    {
+        $user = Auth::guard('sanctum')->user();
+        if (!$user) {
+            throw new AuthenticationException('User not authenticated');
+        }
+
+        $location = $this->getUserOfficeAndRegionFromHrp();
+        $officeId = trim((string) ($location['office_id'] ?? ''));
+
+        $dayStart = $date . ' 00:00:00';
+        $dayEnd = $date . ' 23:59:59';
+
+        $query = Ticket::query()
+            ->whereBetween('created_at', [$dayStart, $dayEnd]);
+
+        if ($officeId !== '') {
+            $query->where('office_id', $officeId);
+        }
+
+        $tickets = $query
+            ->orderBy('created_at')
+            ->get([
+                'id',
+                'ticket_number',
+                'service_type',
+                'member_name',
+                'member_number',
+                'status',
+                'counter_id',
+                'clerk_id',
+                'office_id',
+                'created_at',
+                'completed_at',
+                'duration_seconds',
+            ]);
+
+        $counterIds = $tickets->pluck('counter_id')->filter()->map(fn ($id) => (string) $id)->unique()->values()->all();
+        $clerkIds = $tickets->pluck('clerk_id')->filter()->map(fn ($id) => (string) $id)->unique()->values()->all();
+
+        $counterNames = empty($counterIds)
+            ? collect()
+            : Counter::query()->whereIn('id', $counterIds)->pluck('name', 'id');
+
+        $clerkNames = empty($clerkIds)
+            ? collect()
+            : User::query()->whereIn('id', $clerkIds)->pluck('name', 'id');
+
+        $mapped = $tickets->map(function (Ticket $ticket) use ($counterNames, $clerkNames) {
+            $durationSeconds = (int) ($ticket->duration_seconds ?? 0);
+            $completedAt = $ticket->completed_at;
+            $createdAt = $ticket->created_at;
+
+            return [
+                'id' => (string) $ticket->id,
+                'ticketNumber' => (string) $ticket->ticket_number,
+                'serviceType' => (string) ($ticket->service_type ?? ''),
+                'memberName' => $ticket->member_name ? (string) $ticket->member_name : null,
+                'memberNumber' => $ticket->member_number ? (string) $ticket->member_number : null,
+                'status' => (string) ($ticket->status ?? ''),
+                'counterName' => $ticket->counter_id
+                    ? ($counterNames->get((string) $ticket->counter_id) ?? 'N/A')
+                    : 'N/A',
+                'clerkName' => $ticket->clerk_id
+                    ? ($clerkNames->get((string) $ticket->clerk_id) ?? 'Unassigned')
+                    : 'Unassigned',
+                'completedAt' => $completedAt ? $completedAt->toIso8601String() : null,
+                'createdAt' => $createdAt ? $createdAt->toIso8601String() : null,
+                'durationMinutes' => $durationSeconds > 0 ? (int) round($durationSeconds / 60) : 0,
+            ];
+        })->values()->all();
+
+        return [
+            'date' => $date,
+            'tickets' => $mapped,
+            'meta' => [
+                'officeId' => $officeId !== '' ? $officeId : null,
+                'total' => count($mapped),
+            ],
+        ];
+    }
+
     private function activityLevel(int $count): int
     {
         if ($count <= 0) {

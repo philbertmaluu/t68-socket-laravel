@@ -75,4 +75,24 @@ class DashboardsController extends BaseController
             return $this->sendError('Failed to retrieve office activities', ['error' => $e->getMessage()], 500);
         }
     }
+
+    /**
+     * Actual tickets for a selected day (drawer when clicking the activity graph).
+     * GET /api/qms/dashboard/office-activities/tickets?date=2026-07-28
+     */
+    public function officeActivityTickets(Request $request): JsonResponse
+    {
+        try {
+            $date = trim((string) $request->query('date', ''));
+            if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                return $this->sendError('Invalid or missing date. Use YYYY-MM-DD.', [], 422);
+            }
+
+            $result = $this->service->officeActivityTickets($date);
+
+            return $this->sendResponse($result, 'Office activity tickets retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve office activity tickets', ['error' => $e->getMessage()], 500);
+        }
+    }
 }
