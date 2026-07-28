@@ -97,25 +97,33 @@ class DashboardService
         $officeId = trim((string) ($location['office_id'] ?? ''));
         $officeName = isset($location['office_name']) ? (string) $location['office_name'] : null;
 
-        $query = Ticket::query()
-            ->whereYear('created_at', $year)
-            ->whereNotNull('created_at');
+        $query = Ticket::query()->whereNotNull('created_at');
 
         // Scope to the authenticated user's office (same as supervisor dashboard).
         if ($officeId !== '') {
             $query->where('office_id', $officeId);
         }
 
+        // Oracle-compatible daily grouping (TO_CHAR, not MySQL DATE()).
+        $yearStart = sprintf('%d-01-01 00:00:00', $year);
+        $yearEnd = sprintf('%d-12-31 23:59:59', $year);
+
         $rows = $query
-            ->selectRaw('DATE(created_at) as activity_date, office_id, COUNT(*) as ticket_count')
-            ->groupByRaw('DATE(created_at), office_id')
-            ->orderBy('activity_date')
+            ->whereBetween('created_at', [$yearStart, $yearEnd])
+            ->selectRaw("TO_CHAR(created_at, 'YYYY-MM-DD') as activity_date, office_id, COUNT(*) as ticket_count")
+            ->groupByRaw("TO_CHAR(created_at, 'YYYY-MM-DD'), office_id")
+            ->orderByRaw("TO_CHAR(created_at, 'YYYY-MM-DD') asc")
             ->get();
 
         /** @var array<string, array<string, int>> $byDateOffice */
         $byDateOffice = [];
         foreach ($rows as $row) {
-            $date = (string) $row->activity_date;
+            $rawDate = $row->activity_date;
+            if ($rawDate instanceof \DateTimeInterface) {
+                $date = $rawDate->format('Y-m-d');
+            } else {
+                $date = substr(trim((string) $rawDate), 0, 10);
+            }
             $rowOfficeId = (string) ($row->office_id ?? '');
             if ($date === '' || $rowOfficeId === '') {
                 continue;
