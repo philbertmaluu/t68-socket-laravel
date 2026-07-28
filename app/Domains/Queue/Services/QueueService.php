@@ -2,10 +2,14 @@
 
 namespace App\Domains\Queue\Services;
 
+use App\Domains\Authentication\Models\User;
+use App\Domains\Counter\Models\Counter;
 use App\Domains\Queue\Models\Queue;
+use App\Domains\Ticket\Models\Ticket;
 use App\Traits\UserOfficeTrait;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class QueueService
 {
@@ -120,6 +124,202 @@ class QueueService
             'total_queues' => $queues->count(),
             'offices' => $offices,
         ];
+    }
+
+    /**
+     * GitHub-style heatmap: tickets per day for a queue's counter (counter = queue).
+     *
+     * @return array{year: int, days: list<array{date: string, count: int, level: int}>, meta: array{queueId: string, counterId: string|null, generatedAt: string}}
+     */
+    public function queueActivities(string $queueId, int $year): array
+    {
+        $queue = $this->findQueueForCurrentOffice($queueId);
+
+        if ($year < 2000 || $year > 2100) {
+            $year = (int) now()->year;
+        }
+
+        $counterId = $queue->counter_id ? (string) $queue->counter_id : null;
+        $yearStart = sprintf('%d-01-01 00:00:00', $year);
+        $yearEnd = sprintf('%d-12-31 23:59:59', $year);
+
+        $query = Ticket::query()
+            ->whereNotNull('created_at')
+            ->whereBetween('created_at', [$yearStart, $yearEnd]);
+
+        $this->scopeTicketsToQueueCounter($query, (string) $queue->id, $counterId);
+
+        $rows = $query
+            ->selectRaw("TO_CHAR(created_at, 'YYYY-MM-DD') as activity_date, COUNT(*) as ticket_count")
+            ->groupByRaw("TO_CHAR(created_at, 'YYYY-MM-DD')")
+            ->orderByRaw("TO_CHAR(created_at, 'YYYY-MM-DD') asc")
+            ->get();
+
+        /** @var array<string, int> $byDate */
+        $byDate = [];
+        foreach ($rows as $row) {
+            $rawDate = $row->activity_date;
+            if ($rawDate instanceof \DateTimeInterface) {
+                $date = $rawDate->format('Y-m-d');
+            } else {
+                $date = substr(trim((string) $rawDate), 0, 10);
+            }
+            if ($date === '') {
+                continue;
+            }
+            $byDate[$date] = (int) $row->ticket_count;
+        }
+
+        $days = [];
+        $start = new \DateTimeImmutable(sprintf('%d-01-01', $year));
+        $end = new \DateTimeImmutable(sprintf('%d-12-31', $year));
+
+        for ($date = $start; $date <= $end; $date = $date->modify('+1 day')) {
+            $dateStr = $date->format('Y-m-d');
+            $count = (int) ($byDate[$dateStr] ?? 0);
+            $days[] = [
+                'date' => $dateStr,
+                'count' => $count,
+                'level' => $this->activityLevel($count),
+            ];
+        }
+
+        return [
+            'year' => $year,
+            'days' => $days,
+            'meta' => [
+                'queueId' => (string) $queue->id,
+                'counterId' => $counterId,
+                'generatedAt' => now()->toIso8601String(),
+            ],
+        ];
+    }
+
+    /**
+     * Tickets for a single day on a queue's counter (drawer when clicking the activity graph).
+     *
+     * @return array{date: string, tickets: list<array<string, mixed>>, meta: array{queueId: string, counterId: string|null, total: int}}
+     */
+    public function queueActivityTickets(string $queueId, string $date): array
+    {
+        $queue = $this->findQueueForCurrentOffice($queueId);
+        $counterId = $queue->counter_id ? (string) $queue->counter_id : null;
+
+        $dayStart = $date . ' 00:00:00';
+        $dayEnd = $date . ' 23:59:59';
+
+        $query = Ticket::query()->whereBetween('created_at', [$dayStart, $dayEnd]);
+        $this->scopeTicketsToQueueCounter($query, (string) $queue->id, $counterId);
+
+        $tickets = $query
+            ->orderBy('created_at')
+            ->get([
+                'id',
+                'ticket_number',
+                'service_type',
+                'member_name',
+                'member_number',
+                'status',
+                'counter_id',
+                'clerk_id',
+                'queue_id',
+                'created_at',
+                'completed_at',
+                'duration_seconds',
+            ]);
+
+        $counterIds = $tickets->pluck('counter_id')->filter()->map(fn ($id) => (string) $id)->unique()->values()->all();
+        $clerkIds = $tickets->pluck('clerk_id')->filter()->map(fn ($id) => (string) $id)->unique()->values()->all();
+
+        $counterNames = empty($counterIds)
+            ? collect()
+            : Counter::query()->whereIn('id', $counterIds)->pluck('name', 'id');
+
+        $clerkNames = empty($clerkIds)
+            ? collect()
+            : User::query()->whereIn('id', $clerkIds)->pluck('name', 'id');
+
+        $mapped = $tickets->map(function (Ticket $ticket) use ($counterNames, $clerkNames) {
+            $durationSeconds = (int) ($ticket->duration_seconds ?? 0);
+            $completedAt = $ticket->completed_at;
+            $createdAt = $ticket->created_at;
+
+            return [
+                'id' => (string) $ticket->id,
+                'ticketNumber' => (string) $ticket->ticket_number,
+                'serviceType' => (string) ($ticket->service_type ?? ''),
+                'memberName' => $ticket->member_name ? (string) $ticket->member_name : null,
+                'memberNumber' => $ticket->member_number ? (string) $ticket->member_number : null,
+                'status' => (string) ($ticket->status ?? ''),
+                'counterName' => $ticket->counter_id
+                    ? ($counterNames->get((string) $ticket->counter_id) ?? 'N/A')
+                    : 'N/A',
+                'clerkName' => $ticket->clerk_id
+                    ? ($clerkNames->get((string) $ticket->clerk_id) ?? 'Unassigned')
+                    : 'Unassigned',
+                'completedAt' => $completedAt ? $completedAt->toIso8601String() : null,
+                'createdAt' => $createdAt ? $createdAt->toIso8601String() : null,
+                'durationMinutes' => $durationSeconds > 0 ? (int) round($durationSeconds / 60) : 0,
+            ];
+        })->values()->all();
+
+        return [
+            'date' => $date,
+            'tickets' => $mapped,
+            'meta' => [
+                'queueId' => (string) $queue->id,
+                'counterId' => $counterId,
+                'total' => count($mapped),
+            ],
+        ];
+    }
+
+    private function findQueueForCurrentOffice(string $queueId): Queue
+    {
+        $officeId = trim((string) ($this->getUserOfficeAndRegionFromHrp()['office_id'] ?? ''));
+
+        $query = Queue::query()->where('id', $queueId);
+        if ($officeId !== '') {
+            $query->where('office_id', $officeId);
+        }
+
+        $queue = $query->first();
+        if (!$queue) {
+            throw new NotFoundHttpException('Queue not found');
+        }
+
+        return $queue;
+    }
+
+    /**
+     * Prefer counter_id (counter = queue); fall back to queue_id.
+     */
+    private function scopeTicketsToQueueCounter($query, string $queueId, ?string $counterId): void
+    {
+        if ($counterId !== null && $counterId !== '') {
+            $query->where('counter_id', $counterId);
+            return;
+        }
+
+        $query->where('queue_id', $queueId);
+    }
+
+    private function activityLevel(int $count): int
+    {
+        if ($count <= 0) {
+            return 0;
+        }
+        if ($count <= 30) {
+            return 1;
+        }
+        if ($count <= 60) {
+            return 2;
+        }
+        if ($count <= 100) {
+            return 3;
+        }
+
+        return 4;
     }
 
     private function normalizeQueueStatus(string $status): string

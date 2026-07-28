@@ -3,4 +3,8 @@
 use App\Domains\Queue\Controllers\QueueController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('queues', [QueueController::class, 'index'])->middleware('auth:sanctum');
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('queues', [QueueController::class, 'index']);
+    Route::get('queues/{id}/activities', [QueueController::class, 'activities']);
+    Route::get('queues/{id}/activities/tickets', [QueueController::class, 'activityTickets']);
+});
