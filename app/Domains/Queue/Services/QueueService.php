@@ -274,6 +274,128 @@ class QueueService
         ];
     }
 
+    /**
+     * Export queue day tickets as PDF or Excel (CSV row data).
+     *
+     * @return array{format: string, filename: string, content: string, mime: string}
+     */
+    public function exportQueueActivityTickets(string $queueId, string $date, string $format): array
+    {
+        $queue = $this->findQueueForCurrentOffice($queueId);
+        $payload = $this->queueActivityTickets($queueId, $date);
+        $tickets = $payload['tickets'];
+
+        $counterId = $queue->counter_id ? (string) $queue->counter_id : null;
+        $counterName = '';
+        if ($counterId) {
+            $counterName = (string) (Counter::query()->where('id', $counterId)->value('name') ?? '');
+        }
+
+        $services = [];
+        if ($counterId) {
+            $services = DB::table('counter_services as cs')
+                ->join('services as s', 's.id', '=', 'cs.service_id')
+                ->where('cs.counter_id', $counterId)
+                ->pluck('s.name')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        $officeName = null;
+        $queuesWithNames = $this->withHrpOfficeNames(collect([[
+            'office_id' => (string) $queue->office_id,
+            'office_name' => null,
+        ]]));
+        $officeName = $queuesWithNames->first()['office_name'] ?? null;
+
+        $safeQueue = preg_replace('/[^A-Za-z0-9_-]+/', '-', (string) $queue->name) ?: 'queue';
+        $dateKey = str_replace('-', '', $date);
+        $user = \Illuminate\Support\Facades\Auth::guard('sanctum')->user();
+        $generatedBy = trim((string) ($user?->name ?? $user?->email ?? 'System'));
+        if ($generatedBy === '') {
+            $generatedBy = 'System';
+        }
+
+        if ($format === 'excel') {
+            $csv = $this->buildTicketsCsv($tickets);
+            return [
+                'format' => 'excel',
+                'filename' => "queue-activity-{$safeQueue}-{$dateKey}.csv",
+                'content' => $csv,
+                'mime' => 'text/csv; charset=UTF-8',
+            ];
+        }
+
+        $logoFile = public_path('images/nssf-logo.png');
+        $logoPath = is_file($logoFile) ? ('file://' . $logoFile) : null;
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.queue.activity-report', [
+            'logoPath' => $logoPath,
+            'queueName' => (string) $queue->name,
+            'counterName' => $counterName,
+            'officeName' => $officeName,
+            'services' => $services,
+            'tickets' => $tickets,
+            'reportDate' => \Carbon\Carbon::parse($date)->format('F j, Y'),
+            'dateKey' => $dateKey,
+            'generatedAt' => now()->format('d M Y H:i'),
+            'generatedBy' => $generatedBy !== '' ? $generatedBy : 'System',
+        ])->setPaper('a4', 'landscape');
+
+        return [
+            'format' => 'pdf',
+            'filename' => "queue-activity-{$safeQueue}-{$dateKey}.pdf",
+            'content' => $pdf->output(),
+            'mime' => 'application/pdf',
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $tickets
+     */
+    private function buildTicketsCsv(array $tickets): string
+    {
+        $handle = fopen('php://temp', 'r+');
+        // UTF-8 BOM so Excel opens accents correctly
+        fwrite($handle, "\xEF\xBB\xBF");
+
+        fputcsv($handle, [
+            'Ticket',
+            'Service',
+            'Member Name',
+            'Member Number',
+            'Status',
+            'Created At',
+            'Completed At',
+            'Duration (min)',
+            'Clerk',
+            'Counter',
+        ]);
+
+        foreach ($tickets as $ticket) {
+            fputcsv($handle, [
+                $ticket['ticketNumber'] ?? '',
+                $ticket['serviceType'] ?? '',
+                $ticket['memberName'] ?? '',
+                $ticket['memberNumber'] ?? '',
+                $ticket['status'] ?? '',
+                $ticket['createdAt'] ?? '',
+                $ticket['completedAt'] ?? '',
+                $ticket['durationMinutes'] ?? 0,
+                $ticket['clerkName'] ?? '',
+                $ticket['counterName'] ?? '',
+            ]);
+        }
+
+        rewind($handle);
+        $csv = stream_get_contents($handle) ?: '';
+        fclose($handle);
+
+        return $csv;
+    }
+
     private function findQueueForCurrentOffice(string $queueId): Queue
     {
         $officeId = trim((string) ($this->getUserOfficeAndRegionFromHrp()['office_id'] ?? ''));

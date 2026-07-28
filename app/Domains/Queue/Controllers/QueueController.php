@@ -67,4 +67,34 @@ class QueueController extends BaseController
             return $this->sendError('Failed to retrieve queue activity tickets', ['error' => $e->getMessage()], 500);
         }
     }
+
+    /**
+     * GET /api/qms/queues/{id}/activities/export?date=2026-07-28&format=pdf|excel
+     */
+    public function exportActivityTickets(Request $request, string $id)
+    {
+        try {
+            $date = trim((string) $request->query('date', ''));
+            if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+                return $this->sendError('Invalid or missing date. Use YYYY-MM-DD.', [], 422);
+            }
+
+            $format = strtolower(trim((string) $request->query('format', 'pdf')));
+            if (!in_array($format, ['pdf', 'excel'], true)) {
+                return $this->sendError('Invalid format. Use pdf or excel.', [], 422);
+            }
+
+            $export = $this->service->exportQueueActivityTickets($id, $date, $format);
+
+            return response($export['content'], 200, [
+                'Content-Type' => $export['mime'],
+                'Content-Disposition' => 'attachment; filename="' . $export['filename'] . '"',
+                'Cache-Control' => 'no-store, no-cache, must-revalidate',
+            ]);
+        } catch (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to export queue activity tickets', ['error' => $e->getMessage()], 500);
+        }
+    }
 }
