@@ -48,17 +48,18 @@ class QueueController extends BaseController
     }
 
     /**
-     * GET /api/qms/queues/{id}/activities/tickets?date=2026-07-28
+     * GET /api/qms/queues/{id}/activities/tickets?date=YYYY-MM-DD
+     * or ?from=YYYY-MM-DD&to=YYYY-MM-DD
      */
     public function activityTickets(Request $request, string $id): JsonResponse
     {
         try {
-            $date = trim((string) $request->query('date', ''));
-            if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-                return $this->sendError('Invalid or missing date. Use YYYY-MM-DD.', [], 422);
+            [$date, $from, $to, $error] = $this->resolveDateFilters($request);
+            if ($error !== null) {
+                return $this->sendError($error, [], 422);
             }
 
-            $result = $this->service->queueActivityTickets($id, $date);
+            $result = $this->service->queueActivityTickets($id, $date, $from, $to);
 
             return $this->sendResponse($result, 'Queue activity tickets retrieved successfully');
         } catch (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e) {
@@ -69,14 +70,15 @@ class QueueController extends BaseController
     }
 
     /**
-     * GET /api/qms/queues/{id}/activities/export?date=2026-07-28&format=pdf|excel
+     * GET /api/qms/queues/{id}/activities/export?format=pdf|excel
+     * with date=YYYY-MM-DD or from=&to=
      */
     public function exportActivityTickets(Request $request, string $id)
     {
         try {
-            $date = trim((string) $request->query('date', ''));
-            if ($date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
-                return $this->sendError('Invalid or missing date. Use YYYY-MM-DD.', [], 422);
+            [$date, $from, $to, $error] = $this->resolveDateFilters($request);
+            if ($error !== null) {
+                return $this->sendError($error, [], 422);
             }
 
             $format = strtolower(trim((string) $request->query('format', 'pdf')));
@@ -84,7 +86,7 @@ class QueueController extends BaseController
                 return $this->sendError('Invalid format. Use pdf or excel.', [], 422);
             }
 
-            $export = $this->service->exportQueueActivityTickets($id, $date, $format);
+            $export = $this->service->exportQueueActivityTickets($id, $format, $date, $from, $to);
 
             return response($export['content'], 200, [
                 'Content-Type' => $export['mime'],
@@ -96,5 +98,34 @@ class QueueController extends BaseController
         } catch (\Exception $e) {
             return $this->sendError('Failed to export queue activity tickets', ['error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * @return array{0: string|null, 1: string|null, 2: string|null, 3: string|null}
+     */
+    private function resolveDateFilters(Request $request): array
+    {
+        $datePattern = '/^\d{4}-\d{2}-\d{2}$/';
+        $date = trim((string) $request->query('date', ''));
+        $from = trim((string) $request->query('from', ''));
+        $to = trim((string) $request->query('to', ''));
+
+        $hasRange = $from !== '' || $to !== '';
+        if ($hasRange) {
+            if ($from === '' || $to === '' || !preg_match($datePattern, $from) || !preg_match($datePattern, $to)) {
+                return [null, null, null, 'Invalid date range. Use from=YYYY-MM-DD&to=YYYY-MM-DD.'];
+            }
+            if ($from > $to) {
+                return [null, null, null, 'Invalid date range. "from" must be on or before "to".'];
+            }
+
+            return [null, $from, $to, null];
+        }
+
+        if ($date === '' || !preg_match($datePattern, $date)) {
+            return [null, null, null, 'Provide date=YYYY-MM-DD or from=&to= date range.'];
+        }
+
+        return [$date, null, null, null];
     }
 }

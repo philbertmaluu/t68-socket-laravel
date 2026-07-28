@@ -196,17 +196,29 @@ class QueueService
     }
 
     /**
-     * Tickets for a single day on a queue's counter (drawer when clicking the activity graph).
+     * Tickets for a day or date range on a queue's counter.
      *
-     * @return array{date: string, tickets: list<array<string, mixed>>, meta: array{queueId: string, counterId: string|null, total: int}}
+     * @return array{date: string|null, from: string|null, to: string|null, tickets: list<array<string, mixed>>, meta: array{queueId: string, counterId: string|null, total: int}}
      */
-    public function queueActivityTickets(string $queueId, string $date): array
-    {
+    public function queueActivityTickets(
+        string $queueId,
+        ?string $date = null,
+        ?string $from = null,
+        ?string $to = null
+    ): array {
         $queue = $this->findQueueForCurrentOffice($queueId);
         $counterId = $queue->counter_id ? (string) $queue->counter_id : null;
 
-        $dayStart = $date . ' 00:00:00';
-        $dayEnd = $date . ' 23:59:59';
+        if ($from && $to) {
+            $dayStart = $from . ' 00:00:00';
+            $dayEnd = $to . ' 23:59:59';
+        } else {
+            $date = $date ?: now()->toDateString();
+            $dayStart = $date . ' 00:00:00';
+            $dayEnd = $date . ' 23:59:59';
+            $from = null;
+            $to = null;
+        }
 
         $query = Ticket::query()->whereBetween('created_at', [$dayStart, $dayEnd]);
         $this->scopeTicketsToQueueCounter($query, (string) $queue->id, $counterId);
@@ -264,7 +276,9 @@ class QueueService
         })->values()->all();
 
         return [
-            'date' => $date,
+            'date' => $from && $to ? null : $date,
+            'from' => $from,
+            'to' => $to,
             'tickets' => $mapped,
             'meta' => [
                 'queueId' => (string) $queue->id,
@@ -275,14 +289,19 @@ class QueueService
     }
 
     /**
-     * Export queue day tickets as PDF or Excel (CSV row data).
+     * Export queue tickets as PDF or Excel for a day or date range.
      *
      * @return array{format: string, filename: string, content: string, mime: string}
      */
-    public function exportQueueActivityTickets(string $queueId, string $date, string $format): array
-    {
+    public function exportQueueActivityTickets(
+        string $queueId,
+        string $format,
+        ?string $date = null,
+        ?string $from = null,
+        ?string $to = null
+    ): array {
         $queue = $this->findQueueForCurrentOffice($queueId);
-        $payload = $this->queueActivityTickets($queueId, $date);
+        $payload = $this->queueActivityTickets($queueId, $date, $from, $to);
         $tickets = $payload['tickets'];
 
         $counterId = $queue->counter_id ? (string) $queue->counter_id : null;
@@ -311,11 +330,22 @@ class QueueService
         $officeName = $queuesWithNames->first()['office_name'] ?? null;
 
         $safeQueue = preg_replace('/[^A-Za-z0-9_-]+/', '-', (string) $queue->name) ?: 'queue';
-        $dateKey = str_replace('-', '', $date);
         $user = \Illuminate\Support\Facades\Auth::guard('sanctum')->user();
         $generatedBy = trim((string) ($user?->name ?? $user?->email ?? 'System'));
         if ($generatedBy === '') {
             $generatedBy = 'System';
+        }
+
+        $isRange = $from && $to;
+        if ($isRange) {
+            $reportDate = \Carbon\Carbon::parse($from)->format('F j, Y')
+                . ' – '
+                . \Carbon\Carbon::parse($to)->format('F j, Y');
+            $dateKey = str_replace('-', '', $from) . '-' . str_replace('-', '', $to);
+        } else {
+            $date = $date ?: now()->toDateString();
+            $reportDate = \Carbon\Carbon::parse($date)->format('F j, Y');
+            $dateKey = str_replace('-', '', $date);
         }
 
         if ($format === 'excel') {
@@ -341,7 +371,7 @@ class QueueService
             'officeName' => $officeName,
             'services' => $services,
             'tickets' => $tickets,
-            'reportDate' => \Carbon\Carbon::parse($date)->format('F j, Y'),
+            'reportDate' => $reportDate,
             'dateKey' => $dateKey,
             'generatedAt' => now()->format('d M Y H:i'),
             'generatedBy' => $generatedBy !== '' ? $generatedBy : 'System',
