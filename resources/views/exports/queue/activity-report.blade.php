@@ -5,176 +5,164 @@
     <title>Queue Activity Report</title>
     <style>
         @page {
-            margin: 28px 32px 40px 32px;
-        }
-
-        * {
-            box-sizing: border-box;
+            margin: 24px 24px 28px 24px;
         }
 
         body {
             font-family: DejaVu Sans, Helvetica, Arial, sans-serif;
-            font-size: 10px;
+            font-size: 9px;
             color: #1f1f1f;
             margin: 0;
             padding: 0;
-            position: relative;
         }
 
         .watermark {
             position: fixed;
-            top: 32%;
-            left: 50%;
-            width: 280px;
-            margin-left: -140px;
-            opacity: 0.08;
-            z-index: 0;
+            top: 38%;
+            left: 0;
+            width: 100%;
             text-align: center;
+            opacity: 0.07;
+            z-index: -1000;
         }
 
         .watermark img {
-            width: 280px;
-            height: auto;
+            width: 160px;
+            height: 160px;
         }
 
-        .content {
-            position: relative;
-            z-index: 1;
-        }
-
-        .brand-bar {
-            border-bottom: 3px solid #902d30;
-            padding-bottom: 12px;
-            margin-bottom: 16px;
-        }
-
-        .brand-row {
+        .header-table {
             width: 100%;
+            border-collapse: collapse;
+            border-bottom: 3px solid #902d30;
+            margin: 0 0 10px 0;
+            padding: 0 0 8px 0;
+        }
+
+        .header-table td {
+            vertical-align: middle;
+            padding: 0;
         }
 
         .brand-logo {
-            width: 56px;
-            height: auto;
-            vertical-align: middle;
-        }
-
-        .brand-text {
-            display: inline-block;
-            vertical-align: middle;
-            padding-left: 12px;
+            width: 42px;
+            height: 42px;
         }
 
         .brand-name {
-            font-size: 16px;
+            font-size: 13px;
             font-weight: bold;
             color: #902d30;
-            letter-spacing: 0.3px;
             margin: 0;
+            padding: 0;
         }
 
         .brand-sub {
-            font-size: 9px;
+            font-size: 8px;
             color: #666;
-            margin: 2px 0 0 0;
+            margin: 1px 0 0 0;
+            padding: 0;
         }
 
         .report-title {
-            font-size: 14px;
+            font-size: 12px;
             font-weight: bold;
             color: #222;
-            margin: 0 0 4px 0;
+            margin: 0;
+            padding: 0;
+            text-align: right;
         }
 
         .meta-grid {
             width: 100%;
             border-collapse: collapse;
-            margin: 12px 0 18px 0;
+            margin: 0 0 10px 0;
         }
 
         .meta-grid td {
             vertical-align: top;
-            padding: 4px 8px 4px 0;
+            padding: 3px 6px 3px 0;
+            width: 33%;
         }
 
         .meta-label {
-            font-size: 8px;
+            font-size: 7px;
             text-transform: uppercase;
-            letter-spacing: 0.4px;
+            letter-spacing: 0.3px;
             color: #888;
-            margin: 0 0 2px 0;
+            margin: 0;
+            padding: 0;
         }
 
         .meta-value {
-            font-size: 11px;
+            font-size: 10px;
             font-weight: bold;
             color: #222;
-            margin: 0;
+            margin: 1px 0 0 0;
+            padding: 0;
         }
 
         .services-box {
             background: #faf5f5;
             border: 1px solid #e8d0d1;
             border-left: 3px solid #902d30;
-            padding: 8px 10px;
-            margin-bottom: 16px;
+            padding: 6px 8px;
+            margin: 0 0 10px 0;
         }
 
         .services-title {
-            font-size: 8px;
+            font-size: 7px;
             text-transform: uppercase;
-            letter-spacing: 0.4px;
+            letter-spacing: 0.3px;
             color: #902d30;
             font-weight: bold;
-            margin: 0 0 6px 0;
+            margin: 0 0 4px 0;
+            padding: 0;
         }
 
         .service-chip {
             display: inline-block;
-            background: rgba(144, 45, 48, 0.1);
+            background: #f3e4e5;
             color: #902d30;
-            border: 1px solid rgba(144, 45, 48, 0.2);
-            border-radius: 3px;
-            padding: 2px 7px;
-            margin: 0 4px 4px 0;
-            font-size: 9px;
+            border: 1px solid #e0b8ba;
+            padding: 1px 6px;
+            margin: 0 3px 3px 0;
+            font-size: 8px;
             font-weight: bold;
         }
 
         .service-empty {
             color: #888;
-            font-size: 9px;
+            font-size: 8px;
         }
 
         table.data {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
+            margin: 0;
+        }
+
+        table.data thead {
+            display: table-header-group;
         }
 
         table.data thead th {
             background-color: #902d30;
             color: #ffffff;
-            font-size: 9px;
+            font-size: 8px;
             font-weight: bold;
             text-align: left;
-            padding: 8px 6px;
+            padding: 6px 4px;
             border: none;
         }
 
-        table.data thead th:first-child {
-            border-top-left-radius: 4px;
-        }
-
-        table.data thead th:last-child {
-            border-top-right-radius: 4px;
-        }
-
         table.data tbody td {
-            padding: 7px 6px;
+            padding: 5px 4px;
             border-bottom: 1px solid #ececec;
-            font-size: 9px;
+            font-size: 8px;
             color: #333;
-            vertical-align: middle;
+            vertical-align: top;
             word-wrap: break-word;
         }
 
@@ -194,178 +182,179 @@
 
         .empty {
             text-align: center;
-            padding: 28px 12px;
+            padding: 18px 10px;
             color: #888;
             border: 1px dashed #ddd;
         }
 
-        .footer {
-            position: fixed;
-            bottom: -18px;
-            left: 0;
-            right: 0;
-            font-size: 8px;
-            color: #888;
-            border-top: 1px solid #e5e5e5;
-            padding-top: 6px;
-        }
-
-        .footer-left {
-            float: left;
-        }
-
-        .footer-right {
-            float: right;
-        }
-
         .summary {
-            margin-top: 10px;
-            font-size: 9px;
+            margin: 8px 0 0 0;
+            font-size: 8px;
             color: #555;
         }
 
         .summary strong {
             color: #902d30;
         }
+
+        .footer {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: -12px;
+            font-size: 7px;
+            color: #888;
+            border-top: 1px solid #e5e5e5;
+            padding-top: 4px;
+        }
+
+        .footer-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .footer-table td {
+            font-size: 7px;
+            color: #888;
+            padding: 0;
+        }
     </style>
 </head>
 <body>
     @if(!empty($logoPath))
         <div class="watermark">
-            <img src="{{ $logoPath }}" alt="NSSF">
+            <img src="{{ $logoPath }}" width="160" height="160" alt="NSSF">
         </div>
     @endif
 
-    <div class="content">
-        <div class="brand-bar">
-            <table class="brand-row" cellpadding="0" cellspacing="0">
-                <tr>
-                    <td style="width: 64px;">
-                        @if(!empty($logoPath))
-                            <img class="brand-logo" src="{{ $logoPath }}" alt="NSSF">
-                        @endif
-                    </td>
-                    <td>
-                        <div class="brand-text">
-                            <p class="brand-name">National Social Security Fund</p>
-                            <p class="brand-sub">Queue Management System — Activity Report</p>
-                        </div>
-                    </td>
-                    <td style="text-align: right; vertical-align: middle;">
-                        <p class="report-title">Queue Activity</p>
-                        <p class="brand-sub">Generated {{ $generatedAt }}</p>
-                        <p class="brand-sub">Generated by {{ $generatedBy }}</p>
-                    </td>
-                </tr>
-            </table>
-        </div>
+    <table class="header-table">
+        <tr>
+            <td style="width: 50px;">
+                @if(!empty($logoPath))
+                    <img class="brand-logo" src="{{ $logoPath }}" width="42" height="42" alt="NSSF">
+                @endif
+            </td>
+            <td>
+                <p class="brand-name">National Social Security Fund</p>
+                <p class="brand-sub">Queue Management System — Activity Report</p>
+            </td>
+            <td style="width: 32%; text-align: right;">
+                <p class="report-title">Queue Activity</p>
+                <p class="brand-sub">Generated {{ $generatedAt }}</p>
+                <p class="brand-sub">Generated by {{ $generatedBy }}</p>
+            </td>
+        </tr>
+    </table>
 
-        <table class="meta-grid">
-            <tr>
-                <td style="width: 34%;">
-                    <p class="meta-label">Queue / Counter</p>
-                    <p class="meta-value">{{ $queueName }}</p>
-                </td>
-                <td style="width: 33%;">
-                    <p class="meta-label">Counter</p>
-                    <p class="meta-value">{{ $counterName ?: 'N/A' }}</p>
-                </td>
-                <td style="width: 33%;">
-                    <p class="meta-label">Report Date</p>
-                    <p class="meta-value">{{ $reportDate }}</p>
-                </td>
-            </tr>
-            <tr>
-                <td>
-                    <p class="meta-label">Office</p>
-                    <p class="meta-value">{{ $officeName ?: 'N/A' }}</p>
-                </td>
-                <td>
-                    <p class="meta-label">Total Tickets</p>
-                    <p class="meta-value">{{ count($tickets) }}</p>
-                </td>
-                <td>
-                    <p class="meta-label">Generated By</p>
-                    <p class="meta-value">{{ $generatedBy }}</p>
-                </td>
-            </tr>
-            <tr>
-                <td>
-                    <p class="meta-label">Document</p>
-                    <p class="meta-value">QMS-QA-{{ $dateKey }}</p>
-                </td>
-                <td colspan="2">
-                    <p class="meta-label">Generated At</p>
-                    <p class="meta-value">{{ $generatedAt }}</p>
-                </td>
-            </tr>
-        </table>
+    <table class="meta-grid">
+        <tr>
+            <td>
+                <p class="meta-label">Queue / Counter</p>
+                <p class="meta-value">{{ $queueName }}</p>
+            </td>
+            <td>
+                <p class="meta-label">Counter</p>
+                <p class="meta-value">{{ $counterName ?: 'N/A' }}</p>
+            </td>
+            <td>
+                <p class="meta-label">Report Date</p>
+                <p class="meta-value">{{ $reportDate }}</p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <p class="meta-label">Office</p>
+                <p class="meta-value">{{ $officeName ?: 'N/A' }}</p>
+            </td>
+            <td>
+                <p class="meta-label">Total Tickets</p>
+                <p class="meta-value">{{ count($tickets) }}</p>
+            </td>
+            <td>
+                <p class="meta-label">Generated By</p>
+                <p class="meta-value">{{ $generatedBy }}</p>
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <p class="meta-label">Document</p>
+                <p class="meta-value">QMS-QA-{{ $dateKey }}</p>
+            </td>
+            <td colspan="2">
+                <p class="meta-label">Generated At</p>
+                <p class="meta-value">{{ $generatedAt }}</p>
+            </td>
+        </tr>
+    </table>
 
-        <div class="services-box">
-            <p class="services-title">Services on this counter</p>
-            @if(count($services) > 0)
-                @foreach($services as $service)
-                    <span class="service-chip">{{ $service }}</span>
-                @endforeach
-            @else
-                <span class="service-empty">No services configured for this counter</span>
-            @endif
-        </div>
-
-        @if(count($tickets) === 0)
-            <div class="empty">No tickets recorded for this date.</div>
+    <div class="services-box">
+        <p class="services-title">Services on this counter</p>
+        @if(count($services) > 0)
+            @foreach($services as $service)
+                <span class="service-chip">{{ $service }}</span>
+            @endforeach
         @else
-            <table class="data">
-                <thead>
-                    <tr>
-                        <th style="width: 6%;">#</th>
-                        <th style="width: 12%;">Ticket</th>
-                        <th style="width: 16%;">Service</th>
-                        <th style="width: 14%;">Member</th>
-                        <th style="width: 10%;">Status</th>
-                        <th style="width: 12%;">Time</th>
-                        <th style="width: 10%;">Duration</th>
-                        <th style="width: 12%;">Clerk</th>
-                        <th style="width: 8%;">Counter</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($tickets as $index => $ticket)
-                        <tr>
-                            <td>{{ $index + 1 }}</td>
-                            <td class="ticket-no">{{ $ticket['ticketNumber'] }}</td>
-                            <td>{{ $ticket['serviceType'] !== '' ? $ticket['serviceType'] : '—' }}</td>
-                            <td>
-                                {{ $ticket['memberName'] ?: '—' }}
-                                @if(!empty($ticket['memberNumber']))
-                                    <br><span style="color:#888;font-size:8px;">{{ $ticket['memberNumber'] }}</span>
-                                @endif
-                            </td>
-                            <td class="status">{{ str_replace('_', ' ', $ticket['status'] ?? '') }}</td>
-                            <td>
-                                @php
-                                    $timeSource = $ticket['completedAt'] ?? $ticket['createdAt'] ?? null;
-                                @endphp
-                                {{ $timeSource ? \Carbon\Carbon::parse($timeSource)->format('h:i A') : '—' }}
-                            </td>
-                            <td>{{ (int) ($ticket['durationMinutes'] ?? 0) }} min</td>
-                            <td>{{ $ticket['clerkName'] ?? '—' }}</td>
-                            <td>{{ $ticket['counterName'] ?? '—' }}</td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-
-            <p class="summary">
-                Showing <strong>{{ count($tickets) }}</strong> ticket{{ count($tickets) === 1 ? '' : 's' }}
-                for <strong>{{ $queueName }}</strong> on <strong>{{ $reportDate }}</strong>.
-            </p>
+            <span class="service-empty">No services configured for this counter</span>
         @endif
     </div>
 
+    @if(count($tickets) === 0)
+        <div class="empty">No tickets recorded for this date.</div>
+    @else
+        <table class="data">
+            <thead>
+                <tr>
+                    <th style="width: 5%;">#</th>
+                    <th style="width: 12%;">Ticket</th>
+                    <th style="width: 16%;">Service</th>
+                    <th style="width: 15%;">Member</th>
+                    <th style="width: 10%;">Status</th>
+                    <th style="width: 10%;">Time</th>
+                    <th style="width: 9%;">Duration</th>
+                    <th style="width: 13%;">Clerk</th>
+                    <th style="width: 10%;">Counter</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($tickets as $index => $ticket)
+                    <tr>
+                        <td>{{ $index + 1 }}</td>
+                        <td class="ticket-no">{{ $ticket['ticketNumber'] }}</td>
+                        <td>{{ $ticket['serviceType'] !== '' ? $ticket['serviceType'] : '—' }}</td>
+                        <td>
+                            {{ $ticket['memberName'] ?: '—' }}
+                            @if(!empty($ticket['memberNumber']))
+                                <br><span style="color:#888;font-size:7px;">{{ $ticket['memberNumber'] }}</span>
+                            @endif
+                        </td>
+                        <td class="status">{{ str_replace('_', ' ', $ticket['status'] ?? '') }}</td>
+                        <td>
+                            @php
+                                $timeSource = $ticket['completedAt'] ?? $ticket['createdAt'] ?? null;
+                            @endphp
+                            {{ $timeSource ? \Carbon\Carbon::parse($timeSource)->format('h:i A') : '—' }}
+                        </td>
+                        <td>{{ (int) ($ticket['durationMinutes'] ?? 0) }} min</td>
+                        <td>{{ $ticket['clerkName'] ?? '—' }}</td>
+                        <td>{{ $ticket['counterName'] ?? '—' }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+
+        <p class="summary">
+            Showing <strong>{{ count($tickets) }}</strong> ticket{{ count($tickets) === 1 ? '' : 's' }}
+            for <strong>{{ $queueName }}</strong> on <strong>{{ $reportDate }}</strong>.
+        </p>
+    @endif
+
     <div class="footer">
-        <div class="footer-left">NSSF Queue Management System — Confidential</div>
-        <div class="footer-right">Generated by {{ $generatedBy }} · {{ $generatedAt }}</div>
+        <table class="footer-table">
+            <tr>
+                <td>NSSF Queue Management System — Confidential</td>
+                <td style="text-align: right;">Generated by {{ $generatedBy }} · {{ $generatedAt }}</td>
+            </tr>
+        </table>
     </div>
 </body>
 </html>

@@ -329,7 +329,10 @@ class QueueService
         }
 
         $logoFile = public_path('images/nssf-logo.png');
-        $logoPath = is_file($logoFile) ? ('file://' . $logoFile) : null;
+        $logoPath = null;
+        if (is_file($logoFile)) {
+            $logoPath = 'data:image/png;base64,' . base64_encode((string) file_get_contents($logoFile));
+        }
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.queue.activity-report', [
             'logoPath' => $logoPath,
@@ -342,7 +345,14 @@ class QueueService
             'dateKey' => $dateKey,
             'generatedAt' => now()->format('d M Y H:i'),
             'generatedBy' => $generatedBy !== '' ? $generatedBy : 'System',
-        ])->setPaper('a4', 'landscape');
+        ])
+            ->setPaper('a4', 'landscape')
+            ->setOptions([
+                'isHtml5ParserEnabled' => true,
+                'isRemoteEnabled' => true,
+                'defaultFont' => 'DejaVu Sans',
+                'dpi' => 96,
+            ]);
 
         return [
             'format' => 'pdf',
