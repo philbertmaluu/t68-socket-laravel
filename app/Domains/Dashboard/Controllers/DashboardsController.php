@@ -5,6 +5,7 @@ namespace App\Domains\Dashboard\Controllers;
 use App\Domains\Dashboard\Services\DashboardService;
 use App\Http\Controllers\BaseController;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class DashboardsController extends BaseController
 {
@@ -56,6 +57,22 @@ class DashboardsController extends BaseController
             return $this->sendResponse($result, 'Tenant dashboard retrieved successfully');
         } catch (\Exception $e) {
             return $this->sendError('Failed to retrieve tenant dashboard', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * GitHub-style heatmap feed: tickets per office per date for a given year.
+     * GET /api/qms/dashboard/office-activities?year=2026
+     */
+    public function officeActivities(Request $request): JsonResponse
+    {
+        try {
+            $year = (int) $request->query('year', now()->year);
+            $result = $this->service->officeActivities($year);
+
+            return $this->sendResponse($result, 'Office activities retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve office activities', ['error' => $e->getMessage()], 500);
         }
     }
 }
