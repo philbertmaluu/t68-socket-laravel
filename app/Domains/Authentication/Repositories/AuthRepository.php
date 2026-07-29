@@ -119,6 +119,8 @@ class AuthRepository
             ->select('a.role_id', 'b.role_code', 'b.role_name', 'c.name as module_name')
             ->where('a.user_id', $user->id)
             ->where('c.id', $moduleId)
+            ->whereNull('b.deleted_at')
+            ->whereNull('c.deleted_at')
             ->where(function($query) {
                 $query->whereNull('a.end_date')
                       ->orWhere('a.end_date', '>=', now());

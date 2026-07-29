@@ -94,18 +94,33 @@ class AuthService
         if (!$user) {
             throw new \Exception('User not authenticated.');
         }
-        
-        $userProfile = $this->repository->getEmployeeProfile($user->user_id);
-        
-        if (empty($userProfile)) {
-            throw new \Exception('User not found.');
+
+        $moduleId = $this->resolveModuleId($module);
+        if (!$moduleId) {
+            throw new \Exception('Module not found.');
         }
 
-        $moduleId = $this->getModuleId($module);
-        $roles = $this->repository->getUserRolesByModule($userProfile->pfno, $moduleId);
-        $publicRoles = $this->repository->getPublicRoles($moduleId);
+        // Prefer users.user_id (PFNO) already on the auth user; fall back to HR profile.
+        $pfno = (string) ($user->user_id ?? '');
+        if ($pfno === '') {
+            $userProfile = $this->repository->getEmployeeProfile($user->user_id);
+            if (empty($userProfile)) {
+                throw new \Exception('User not found.');
+            }
+            $pfno = (string) $userProfile->pfno;
+        }
 
-        return $roles->concat($publicRoles)->toArray();
+        $roles = $this->repository->getUserRolesByModule($pfno, $moduleId);
+
+        return $roles
+            ->map(fn ($row) => [
+                'role_id' => (int) $row->role_id,
+                'role_code' => (string) ($row->role_code ?? ''),
+                'role_name' => (string) ($row->role_name ?? ''),
+                'module_name' => (string) ($row->module_name ?? ''),
+            ])
+            ->values()
+            ->all();
     }
 
     public function getUserRolesByUserId(int $userId): array
@@ -152,7 +167,9 @@ class AuthService
     {
         return $this->repository->getModulesList()
             ->map(fn ($row) => [
-                'id' => (string) ($row->module_id ?? $row->id),
+                'id' => (string) $row->id,
+                'module_id' => (string) ($row->module_id ?? ''),
+                'code' => (string) ($row->code ?? ''),
                 'module_name' => $row->name,
                 'description' => $row->description ?? null,
             ])
@@ -236,21 +253,38 @@ class AuthService
         ];
     }
 
-    private function getModuleId(string $module): ?int
+    /**
+     * Resolve a module identifier to modules.id (primary key).
+     * Accepts: primary key, module_id, code, or name.
+     */
+    private function resolveModuleId(string $module): ?int
     {
-        $moduleIds = [
-            'transfer' => 3,
-            'disciplinary' => 4,
-            'grievance' => 5,
-            'medical' => 6,
-            'leave' => 1,
-            'training' => 7,
-            'fleet' => 8,
-            'library' => 9,
-            'travelling' => 10,
-            'adminpayment' => 11,
-        ];
+        $module = trim($module);
+        if ($module === '') {
+            return null;
+        }
 
-        return $moduleIds[$module] ?? null;
+        $query = \Illuminate\Support\Facades\DB::table('modules')->whereNull('deleted_at');
+
+        if (ctype_digit($module)) {
+            $row = (clone $query)
+                ->where(function ($q) use ($module) {
+                    $q->where('id', (int) $module)
+                        ->orWhere('module_id', $module);
+                })
+                ->first(['id']);
+            return $row ? (int) $row->id : null;
+        }
+
+        $upper = strtoupper($module);
+        $row = $query
+            ->where(function ($q) use ($upper, $module) {
+                $q->whereRaw('UPPER(code) = ?', [$upper])
+                    ->orWhereRaw('UPPER(name) = ?', [$upper])
+                    ->orWhereRaw('UPPER(name) = ?', [strtoupper($module)]);
+            })
+            ->first(['id']);
+
+        return $row ? (int) $row->id : null;
     }
 }
