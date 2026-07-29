@@ -35,7 +35,7 @@ class ModuleAdminService
         }
 
         // Derive module_id (next integer string)
-        $maxModuleId = DB::table('modules')->max(DB::raw('CAST(module_id AS UNSIGNED)'));
+        $maxModuleId = DB::table('modules')->max(DB::raw('TO_NUMBER(module_id)'));
         $nextModuleId = (string) (((int) $maxModuleId) + 1);
 
         $id = DB::table('modules')->insertGetId([
