@@ -16,45 +16,52 @@ class RoleSeeder extends Seeder
      */
     public function run(): void
     {
-        // Get the CQMS module (by code 'CQMS')
-        $module = DB::table('modules')->where('code', 'CQMS')->first();
-        
-        if (!$module) {
+        $cqms = DB::table('modules')->where('code', 'CQMS')->first();
+        $cms  = DB::table('modules')->where('code', 'CMS')->first();
+
+        if (!$cqms) {
             $this->command->warn('CQMS module not found. Please run ModuleSeeder first.');
             return;
         }
 
-        // Use the module's integer ID (primary key)
-        $moduleId = $module->id;
+        if (!$cms) {
+            $this->command->warn('CMS module not found. Please run ModuleSeeder first.');
+            return;
+        }
 
-        $roles = [
+        // Queue Management roles
+        $queueRoles = [
             [
-                'module_id' => $moduleId,
+                'module_id' => $cqms->id,
                 'role_code' => 'QC',
                 'role_name' => 'Queue Clerk',
                 'created_by' => 1,
             ],
             [
-                'module_id' => $moduleId,
+                'module_id' => $cqms->id,
                 'role_code' => 'QS',
                 'role_name' => 'Queue Supervisor',
                 'created_by' => 1,
             ],
             [
-                'module_id' => $moduleId,
+                'module_id' => $cqms->id,
                 'role_code' => 'QA',
                 'role_name' => 'Queue Administrator',
                 'created_by' => 1,
             ],
+        ];
+
+        // Content Management roles
+        $contentRoles = [
             [
-                'module_id' => $moduleId,
+                'module_id' => $cms->id,
                 'role_code' => 'CMPR',
                 'role_name' => 'Content Manager (CMPR)',
                 'created_by' => 1,
             ],
         ];
 
-        foreach ($roles as $roleData) {
+        foreach (array_merge($queueRoles, $contentRoles) as $roleData) {
             Role::firstOrCreate(
                 ['role_code' => $roleData['role_code'], 'module_id' => $roleData['module_id']],
                 $roleData

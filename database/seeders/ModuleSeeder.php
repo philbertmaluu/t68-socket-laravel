@@ -16,16 +16,22 @@ class ModuleSeeder extends Seeder
     public function run(): void
     {
         $modules = [
-            // Add your module data here
-            // Example structure:
             [
                 'module_id' => '1',
                 'code' => 'CQMS',
                 'name' => 'Queueing Management',
-                'description' => 'Core Queue Management System ',
+                'description' => 'Core Queue Management System',
                 'is_active' => true,
                 'created_by' => 1,
-            ],    
+            ],
+            [
+                'module_id' => '2',
+                'code' => 'CMS',
+                'name' => 'Content Management',
+                'description' => 'Manage notification templates and content across the system',
+                'is_active' => true,
+                'created_by' => 1,
+            ],
         ];
 
         foreach ($modules as $moduleData) {
