@@ -205,13 +205,23 @@ class SelfServiceOtpFeatureTest extends TestCase
 
     public function test_contribution_statement_returns_cfms_pdf(): void
     {
-        config()->set('self_service.cfms.api_base', 'https://cfmspre-api.nssf.go.tz');
-        config()->set('self_service.cfms.api_token', 'test-token');
+        config()->set('self_service.cfms.api_base', 'https://cfmspro-api.nssf.go.tz/api');
+        config()->set('self_service.cfms.client_id', 'qms-client');
+        config()->set('self_service.cfms.client_secret', 'qms-secret');
 
         $pdf = base64_encode("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
         Http::fake([
             'https://ictmspre-api.nssf.go.tz/api/send-notification' => Http::response(['success' => true], 200),
-            'https://cfmspre-api.nssf.go.tz/api/data-management/member-statement/*' => Http::response([
+            'https://cfmspro-api.nssf.go.tz/api/qms/session' => Http::response([
+                'success' => true,
+                'data' => [
+                    'token' => 'member-session-token',
+                    'token_type' => 'Bearer',
+                    'member_id' => 4269152,
+                    'matched' => true,
+                ],
+            ], 200),
+            'https://cfmspro-api.nssf.go.tz/api/qms/member-statement/*' => Http::response([
                 'success' => true,
                 'data' => $pdf,
                 'message' => 'Successfully retrieved member statement.',
@@ -226,8 +236,15 @@ class SelfServiceOtpFeatureTest extends TestCase
             ->assertJsonPath('data.pdf_base64', $pdf);
 
         Http::assertSent(function ($request) {
-            return str_contains($request->url(), '/api/data-management/member-statement/4269152/1')
-                && $request->hasHeader('Authorization', 'Bearer test-token');
+            $data = $request->data();
+
+            return str_contains($request->url(), '/api/qms/session')
+                && ($data['member_id'] ?? null) == 4269152
+                && ($data['client_id'] ?? null) === 'qms-client';
+        });
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/api/qms/member-statement/4269152/1')
+                && $request->hasHeader('Authorization', 'Bearer member-session-token');
         });
     }
 
