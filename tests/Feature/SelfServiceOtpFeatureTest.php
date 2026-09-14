@@ -206,8 +206,6 @@ class SelfServiceOtpFeatureTest extends TestCase
     public function test_contribution_statement_returns_cfms_pdf(): void
     {
         config()->set('self_service.cfms.api_base', 'https://cfmspro-api.nssf.go.tz/api');
-        config()->set('self_service.cfms.client_id', 'qms-client');
-        config()->set('self_service.cfms.client_secret', 'qms-secret');
 
         $pdf = base64_encode("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
         Http::fake([
@@ -239,8 +237,7 @@ class SelfServiceOtpFeatureTest extends TestCase
             $data = $request->data();
 
             return str_contains($request->url(), '/api/qms/session')
-                && ($data['member_id'] ?? null) == 4269152
-                && ($data['client_id'] ?? null) === 'qms-client';
+                && ($data['member_id'] ?? null) == 4269152;
         });
         Http::assertSent(function ($request) {
             return str_contains($request->url(), '/api/qms/member-statement/4269152/1')

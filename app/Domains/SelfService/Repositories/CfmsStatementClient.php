@@ -68,20 +68,12 @@ class CfmsStatementClient
 
     private function issueMemberSession(string $memberId, string $base, int $timeout): string
     {
-        $clientId = (string) config('self_service.cfms.client_id', '');
-        $clientSecret = (string) config('self_service.cfms.client_secret', '');
-        if ($clientId === '' || $clientSecret === '') {
-            throw new \RuntimeException('CFMS QMS client credentials are not configured');
-        }
-
         SelfServiceLog::step('statement.cfms.session', ['member_id' => $memberId]);
 
         try {
             $response = Http::acceptJson()
                 ->timeout($timeout)
                 ->post("{$base}/qms/session", [
-                    'client_id' => $clientId,
-                    'client_secret' => $clientSecret,
                     'member_id' => (int) $memberId,
                 ]);
         } catch (Throwable $e) {
