@@ -8,6 +8,7 @@ use App\Domains\SelfService\Models\SelfServiceMember;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use App\Domains\SelfService\Support\SelfServiceLog;
 
 class MemberDirectoryService
 {
@@ -17,24 +18,51 @@ class MemberDirectoryService
     public function findByMemberNumber(string $memberNumber, int|string|null $tenantId = null): array
     {
         $normalized = $this->normalizeMemberNumber($memberNumber);
+        SelfServiceLog::step('lookup.start', [
+            'member_number' => $normalized,
+            'tenant_id' => $tenantId,
+            'demo_enabled' => (bool) config('self_service.demo_enabled'),
+            'oracle_enabled' => (bool) config('self_service.oracle.enabled'),
+        ]);
         if ($normalized === '') {
             throw new \RuntimeException('Member number is required');
         }
 
         $local = $this->fromLocalDirectory($normalized, $tenantId);
         if ($local !== null) {
+            SelfServiceLog::step('lookup.hit', [
+                'source' => 'self_service_members',
+                'member_number' => $local['member_number'],
+                'member_name' => $local['member_name'],
+                'phone' => $local['phone'],
+            ]);
             return $local;
         }
+        SelfServiceLog::step('lookup.miss', ['source' => 'self_service_members']);
 
         $oracle = $this->fromOracleMembers($normalized);
         if ($oracle !== null) {
+            SelfServiceLog::step('lookup.hit', [
+                'source' => 'oracle_members',
+                'member_number' => $oracle['member_number'],
+                'member_name' => $oracle['member_name'],
+                'phone' => $oracle['phone'],
+            ]);
             return $oracle;
         }
+        SelfServiceLog::step('lookup.miss', ['source' => 'oracle_members']);
 
         if (config('self_service.demo_enabled')) {
-            return $this->fromDemo($normalized);
+            $demo = $this->fromDemo($normalized);
+            SelfServiceLog::step('lookup.hit', [
+                'source' => 'demo',
+                'member_number' => $demo['member_number'],
+                'phone' => $demo['phone'],
+            ]);
+            return $demo;
         }
 
+        SelfServiceLog::warning('lookup.not_found', ['member_number' => $normalized]);
         throw new \RuntimeException('Member not found');
     }
 
@@ -116,6 +144,10 @@ class MemberDirectoryService
             throw $e;
         } catch (\Throwable $e) {
             Log::warning('Self-service Oracle member lookup failed', [
+                'member_number' => $memberNumber,
+                'error' => $e->getMessage(),
+            ]);
+            SelfServiceLog::warning('lookup.oracle_failed', [
                 'member_number' => $memberNumber,
                 'error' => $e->getMessage(),
             ]);

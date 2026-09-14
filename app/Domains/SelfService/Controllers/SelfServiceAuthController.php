@@ -9,6 +9,7 @@ use App\Domains\SelfService\Requests\SendOtpRequest;
 use App\Domains\SelfService\Requests\VerifyMemberRequest;
 use App\Domains\SelfService\Requests\VerifyOtpRequest;
 use App\Domains\SelfService\Services\SelfServiceOtpService;
+use App\Domains\SelfService\Support\SelfServiceLog;
 use App\Http\Controllers\BaseController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,56 +23,103 @@ class SelfServiceAuthController extends BaseController
 
     public function verifyMember(VerifyMemberRequest $request): JsonResponse
     {
+        $device = $this->device($request);
+        SelfServiceLog::step('http.verify_member', [
+            'member_number' => $request->input('member_number'),
+            'device_id' => $device?->id,
+            'ip' => $request->ip(),
+        ]);
+
         try {
             $result = $this->selfServiceOtpService->verifyMember(
                 (string) $request->validated()['member_number'],
-                $this->device($request)
+                $device
             );
+
+            SelfServiceLog::step('http.verify_member.ok', [
+                'challenge_id' => $result['challenge_id'] ?? null,
+                'masked_phone' => $result['masked_phone'] ?? null,
+            ]);
 
             return $this->sendResponse($result, 'Member verified successfully');
         } catch (\RuntimeException $e) {
             $status = $e->getMessage() === 'Member not found' ? 404 : 422;
+            SelfServiceLog::error('http.verify_member.failed', $e, ['status' => $status]);
 
             return $this->sendError($e->getMessage(), [], $status);
         } catch (\Exception $e) {
+            SelfServiceLog::error('http.verify_member.exception', $e);
+
             return $this->sendError('Failed to verify member', ['error' => $e->getMessage()], 500);
         }
     }
 
     public function sendOtp(SendOtpRequest $request): JsonResponse
     {
+        $payload = $request->validated();
+        $device = $this->device($request);
+        SelfServiceLog::step('http.send_otp', [
+            'member_number' => $payload['member_number'] ?? null,
+            'challenge_id' => $payload['challenge_id'] ?? null,
+            'locale' => $payload['locale'] ?? null,
+            'device_id' => $device?->id,
+        ]);
+
         try {
-            $payload = $request->validated();
             $result = $this->selfServiceOtpService->sendOtp(
                 (string) $payload['member_number'],
                 $payload['challenge_id'] ?? null,
                 $payload['locale'] ?? null,
-                $this->device($request)
+                $device
             );
+
+            SelfServiceLog::step('http.send_otp.ok', [
+                'challenge_id' => $result['challenge_id'] ?? null,
+            ]);
 
             return $this->sendResponse($result, 'OTP sent successfully');
         } catch (\RuntimeException $e) {
+            SelfServiceLog::error('http.send_otp.failed', $e);
+
             return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
+            SelfServiceLog::error('http.send_otp.exception', $e);
+
             return $this->sendError('Failed to send OTP', ['error' => $e->getMessage()], 500);
         }
     }
 
     public function verifyOtp(VerifyOtpRequest $request): JsonResponse
     {
+        $payload = $request->validated();
+        $device = $this->device($request);
+        SelfServiceLog::step('http.verify_otp', [
+            'member_number' => $payload['member_number'] ?? null,
+            'challenge_id' => $payload['challenge_id'] ?? null,
+            'otp' => $payload['otp'] ?? null,
+            'device_id' => $device?->id,
+        ]);
+
         try {
-            $payload = $request->validated();
             $result = $this->selfServiceOtpService->verifyOtp(
                 (string) $payload['member_number'],
                 (string) $payload['otp'],
                 $payload['challenge_id'] ?? null,
-                $this->device($request)
+                $device
             );
+
+            SelfServiceLog::step('http.verify_otp.ok', [
+                'challenge_id' => $result['challenge_id'] ?? null,
+            ]);
 
             return $this->sendResponse($result, 'OTP verified successfully');
         } catch (\RuntimeException $e) {
+            SelfServiceLog::error('http.verify_otp.failed', $e);
+
             return $this->sendError($e->getMessage(), [], 422);
         } catch (\Exception $e) {
+            SelfServiceLog::error('http.verify_otp.exception', $e);
+
             return $this->sendError('Failed to verify OTP', ['error' => $e->getMessage()], 500);
         }
     }
@@ -79,6 +127,11 @@ class SelfServiceAuthController extends BaseController
     public function memberDetails(Request $request): JsonResponse
     {
         $memberNumber = trim((string) $request->query('member_number', ''));
+        SelfServiceLog::step('http.member_details', [
+            'member_number' => $memberNumber,
+            'device_id' => $this->device($request)?->id,
+        ]);
+
         if ($memberNumber === '') {
             return $this->sendError('Member number is required', [], 422);
         }
@@ -92,9 +145,12 @@ class SelfServiceAuthController extends BaseController
             return $this->sendResponse($result, 'Member details retrieved successfully');
         } catch (\RuntimeException $e) {
             $status = $e->getMessage() === 'Member not found' ? 404 : 422;
+            SelfServiceLog::error('http.member_details.failed', $e);
 
             return $this->sendError($e->getMessage(), [], $status);
         } catch (\Exception $e) {
+            SelfServiceLog::error('http.member_details.exception', $e);
+
             return $this->sendError('Failed to load member details', ['error' => $e->getMessage()], 500);
         }
     }

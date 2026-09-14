@@ -1,0 +1,185 @@
+{
+  "info": {
+    "name": "QMS Self-Service OTP",
+    "description": "Kiosk self-service member lookup + SMS OTP.\n\nRun order:\n1. Authenticate kiosk (saves device_token)\n2. Verify member (saves challenge_id, returns masked phone)\n3. Send OTP (ICTMS SMS)\n4. Verify OTP — paste the 6-digit code from the phone into the otp variable\n5. Member details (optional)\n\nSet collection variables: base_url, device_key, member_number.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://queue-dev-api.nssf.go.tz"
+    },
+    {
+      "key": "device_key",
+      "value": "YOUR_KIOSK_DEVICE_KEY"
+    },
+    {
+      "key": "device_token",
+      "value": ""
+    },
+    {
+      "key": "member_number",
+      "value": "NSSF001"
+    },
+    {
+      "key": "challenge_id",
+      "value": ""
+    },
+    {
+      "key": "otp",
+      "value": "123456"
+    },
+    {
+      "key": "locale",
+      "value": "sw"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authenticate kiosk",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Device authenticated', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.success).to.eql(true);",
+              "  const token = json.data && json.data.token;",
+              "  pm.expect(token).to.be.a('string');",
+              "  pm.collectionVariables.set('device_token', token);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"device_key\": \"{{device_key}}\"\n}"
+        },
+        "url": "{{base_url}}/api/qms/devices/authenticate",
+        "description": "Public. Saves data.token as {{device_token}} for the other requests."
+      }
+    },
+    {
+      "name": "2. Verify member",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Member verified', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.success).to.eql(true);",
+              "  const id = json.data && json.data.challenge_id;",
+              "  pm.expect(id).to.be.a('string');",
+              "  pm.collectionVariables.set('challenge_id', id);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Device-Token", "value": "{{device_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"member_number\": \"{{member_number}}\"\n}"
+        },
+        "url": "{{base_url}}/api/qms/self-services/members/verify",
+        "description": "Looks up the member and creates an OTP challenge. Saves challenge_id. Does not send SMS yet."
+      }
+    },
+    {
+      "name": "3. Send OTP",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('OTP sent', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.success).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Device-Token", "value": "{{device_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"member_number\": \"{{member_number}}\",\n  \"challenge_id\": \"{{challenge_id}}\",\n  \"locale\": \"{{locale}}\"\n}"
+        },
+        "url": "{{base_url}}/api/qms/self-services/otp/send",
+        "description": "Sends the 6-digit OTP via ICTMS SMS to the member's registered phone. Wait ~45s before sending again."
+      }
+    },
+    {
+      "name": "4. Verify OTP",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('OTP verified', function () {",
+              "  pm.response.to.have.status(200);",
+              "  const json = pm.response.json();",
+              "  pm.expect(json.success).to.eql(true);",
+              "  pm.expect(json.data.verified).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Device-Token", "value": "{{device_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"member_number\": \"{{member_number}}\",\n  \"challenge_id\": \"{{challenge_id}}\",\n  \"otp\": \"{{otp}}\"\n}"
+        },
+        "url": "{{base_url}}/api/qms/self-services/otp/verify",
+        "description": "Set collection variable otp to the SMS code, then send."
+      }
+    },
+    {
+      "name": "5. Member details",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Accept", "value": "application/json" },
+          { "key": "X-Device-Token", "value": "{{device_token}}" }
+        ],
+        "url": "{{base_url}}/api/qms/self-services/members/details?member_number={{member_number}}"
+      }
+    }
+  ]
+}

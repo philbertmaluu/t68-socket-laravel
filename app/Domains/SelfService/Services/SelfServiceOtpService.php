@@ -8,6 +8,7 @@ use App\Domains\Device\Models\Device;
 use App\Domains\Notification\Services\NotificationTemplateService;
 use App\Domains\SelfService\Models\SelfServiceOtpChallenge;
 use App\Domains\SelfService\Support\OtpCodeGenerator;
+use App\Domains\SelfService\Support\SelfServiceLog;
 use App\Services\NotificationService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -33,6 +34,13 @@ class SelfServiceOtpService
      */
     public function verifyMember(string $memberNumber, ?Device $device = null): array
     {
+        SelfServiceLog::step('verify_member.start', [
+            'member_number' => $memberNumber,
+            'device_id' => $device?->id,
+            'tenant_id' => $device?->tenant_id,
+            'office_id' => $device?->office_id,
+        ]);
+
         $member = $this->memberDirectory->findByMemberNumber(
             $memberNumber,
             $device?->tenant_id
@@ -45,6 +53,14 @@ class SelfServiceOtpService
             'member_number' => $member['member_number'],
             'member_name' => $member['member_name'],
             'phone' => $this->normalizePhone($member['phone']),
+        ]);
+
+        SelfServiceLog::step('verify_member.challenge_created', [
+            'challenge_id' => $challenge->id,
+            'member_number' => $challenge->member_number,
+            'member_name' => $challenge->member_name,
+            'phone' => $challenge->phone,
+            'masked_phone' => $this->maskPhone($challenge->phone),
         ]);
 
         return $this->presentChallenge($challenge);
@@ -65,6 +81,13 @@ class SelfServiceOtpService
         ?string $locale = null,
         ?Device $device = null
     ): array {
+        SelfServiceLog::step('send_otp.start', [
+            'member_number' => $memberNumber,
+            'challenge_id' => $challengeId,
+            'locale' => $locale,
+            'device_id' => $device?->id,
+        ]);
+
         $challenge = $this->resolveChallenge($memberNumber, $challengeId, $device);
 
         if ($challenge->isVerified()) {
@@ -83,6 +106,13 @@ class SelfServiceOtpService
         $ttl = (int) config('self_service.otp_ttl_minutes', 5);
         $otp = $this->otpCodeGenerator->generate($length);
 
+        SelfServiceLog::step('send_otp.generated', [
+            'challenge_id' => $challenge->id,
+            'otp' => $otp,
+            'ttl_minutes' => $ttl,
+            'phone' => $challenge->phone,
+        ]);
+
         $challenge->update([
             'otp_hash' => Hash::make($otp),
             'attempts' => 0,
@@ -92,6 +122,11 @@ class SelfServiceOtpService
         ]);
 
         $this->dispatchSms($challenge, $otp, $ttl, $locale);
+
+        SelfServiceLog::step('send_otp.sms_ok', [
+            'challenge_id' => $challenge->id,
+            'phone' => $challenge->phone,
+        ]);
 
         return $this->presentChallenge($challenge->fresh() ?? $challenge);
     }
@@ -105,6 +140,13 @@ class SelfServiceOtpService
         ?string $challengeId = null,
         ?Device $device = null
     ): array {
+        SelfServiceLog::step('verify_otp.start', [
+            'member_number' => $memberNumber,
+            'challenge_id' => $challengeId,
+            'otp' => $otp,
+            'device_id' => $device?->id,
+        ]);
+
         $challenge = $this->resolveChallenge($memberNumber, $challengeId, $device);
         $code = preg_replace('/\D/', '', $otp) ?? '';
 
@@ -131,10 +173,20 @@ class SelfServiceOtpService
 
         if (!Hash::check($code, $challenge->otp_hash)) {
             $challenge->increment('attempts');
+            SelfServiceLog::warning('verify_otp.mismatch', [
+                'challenge_id' => $challenge->id,
+                'attempts' => $challenge->attempts,
+                'otp' => $code,
+            ]);
             throw new \RuntimeException('Invalid OTP');
         }
 
         $challenge->update(['verified_at' => now()]);
+
+        SelfServiceLog::step('verify_otp.ok', [
+            'challenge_id' => $challenge->id,
+            'member_number' => $challenge->member_number,
+        ]);
 
         return [
             'verified' => true,
@@ -209,6 +261,11 @@ class SelfServiceOtpService
         ?string $locale
     ): void {
         if (!config('services.ictms.enabled', true)) {
+            SelfServiceLog::step('send_otp.sms_skipped', [
+                'reason' => 'ICTMS_SMS_ENABLED=false',
+                'challenge_id' => $challenge->id,
+                'otp' => $otp,
+            ]);
             return;
         }
 
@@ -233,6 +290,14 @@ class SelfServiceOtpService
             process: 'SELF SERVICE OTP',
             expiryHours: max(1, (int) ceil($ttlMinutes / 60))
         );
+
+        SelfServiceLog::step('send_otp.ictms_response', [
+            'challenge_id' => $challenge->id,
+            'success' => $result['success'],
+            'message' => $result['message'],
+            'data' => $result['data'],
+            'sms_body' => $message,
+        ]);
 
         if (!$result['success']) {
             throw new \RuntimeException($result['message'] ?: 'Failed to send OTP SMS');
