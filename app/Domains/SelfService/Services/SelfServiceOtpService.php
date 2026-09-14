@@ -9,6 +9,7 @@ use App\Domains\Notification\Services\NotificationTemplateService;
 use App\Domains\SelfService\Models\SelfServiceOtpChallenge;
 use App\Domains\SelfService\Support\OtpCodeGenerator;
 use App\Domains\SelfService\Support\SelfServiceLog;
+use App\Domains\SelfService\Support\TanzaniaPhone;
 use App\Services\NotificationService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -339,17 +340,17 @@ class SelfServiceOtpService
 
     private function normalizePhone(string $phone): string
     {
-        $digits = preg_replace('/\D/', '', $phone) ?? '';
-        if ($digits === '') {
-            throw new \RuntimeException('Member has no registered phone number');
+        $normalized = TanzaniaPhone::normalize($phone);
+        if ($normalized === null) {
+            throw new \RuntimeException('Member has no valid registered phone number');
         }
 
-        return $digits;
+        return $normalized;
     }
 
     private function maskPhone(string $phone): string
     {
-        $digits = preg_replace('/\D/', '', $phone) ?? '';
+        $digits = TanzaniaPhone::normalize($phone) ?? (preg_replace('/\D/', '', $phone) ?? '');
         if (strlen($digits) < 4) {
             return '07******';
         }

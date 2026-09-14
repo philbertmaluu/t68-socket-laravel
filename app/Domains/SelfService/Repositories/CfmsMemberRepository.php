@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\SelfService\Repositories;
 
 use App\Domains\SelfService\Support\SelfServiceLog;
+use App\Domains\SelfService\Support\TanzaniaPhone;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -76,12 +77,16 @@ class CfmsMemberRepository
      */
     private function mapRow(object $row, string $fallbackNumber): array
     {
-        $phone = $this->value($row, 'PHONE_NUMBER', 'phone_number');
-        if ($phone === '') {
-            $phone = $this->value($row, 'EXTRA_PHONE_NUMBER', 'extra_phone_number');
-        }
-        if ($phone === '') {
-            throw new \RuntimeException('Member has no registered phone number');
+        $primaryPhone = $this->value($row, 'PHONE_NUMBER', 'phone_number');
+        $extraPhone = $this->value($row, 'EXTRA_PHONE_NUMBER', 'extra_phone_number');
+        $phone = TanzaniaPhone::firstValid($primaryPhone, $extraPhone);
+        if ($phone === null) {
+            SelfServiceLog::warning('lookup.cfms.invalid_phone', [
+                'member_number' => $fallbackNumber,
+                'phone_number' => $primaryPhone,
+                'extra_phone_number' => $extraPhone,
+            ]);
+            throw new \RuntimeException('Member has no valid registered phone number');
         }
 
         $name = trim(implode(' ', array_filter([
@@ -98,7 +103,7 @@ class CfmsMemberRepository
         return [
             'member_number' => $memberId !== '' ? $memberId : $fallbackNumber,
             'member_name' => $name,
-            'phone' => preg_replace('/\D/', '', $phone) ?: $phone,
+            'phone' => $phone,
             'email' => $this->value($row, 'EMAIL', 'email'),
             'status' => $this->value($row, 'STATUS', 'status'),
         ];

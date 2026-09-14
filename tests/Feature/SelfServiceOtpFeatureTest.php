@@ -135,6 +135,34 @@ class SelfServiceOtpFeatureTest extends TestCase
         });
     }
 
+    public function test_invalid_cfms_phone_is_rejected(): void
+    {
+        $this->cfmsMember('4269152', 'Jane Member', 'D4269152');
+
+        $this->postJson('/api/qms/self-services/members/verify', [
+            'member_number' => '4269152',
+        ], $this->kioskHeaders())
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Member has no valid registered phone number');
+    }
+
+    public function test_international_cfms_phone_is_normalized(): void
+    {
+        $this->cfmsMember('4269152', 'Jane Member', '255748304649');
+
+        $this->postJson('/api/qms/self-services/members/verify', [
+            'member_number' => '4269152',
+        ], $this->kioskHeaders())
+            ->assertOk()
+            ->assertJsonPath('data.masked_phone', '07******49');
+
+        $this->assertDatabaseHas('self_service_members', [
+            'member_number' => '4269152',
+            'phone' => '0748304649',
+        ]);
+    }
+
     public function test_unknown_member_returns_not_found(): void
     {
         $this->postJson('/api/qms/self-services/members/verify', [

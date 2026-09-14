@@ -7,6 +7,7 @@ namespace App\Domains\SelfService\Services;
 use App\Domains\SelfService\Models\SelfServiceMember;
 use App\Domains\SelfService\Repositories\CfmsMemberRepository;
 use App\Domains\SelfService\Support\SelfServiceLog;
+use App\Domains\SelfService\Support\TanzaniaPhone;
 
 class MemberDirectoryService
 {
@@ -35,6 +36,19 @@ class MemberDirectoryService
             SelfServiceLog::warning('lookup.not_found', ['member_number' => $normalized]);
             throw new \RuntimeException('Member not found');
         }
+
+        $phone = TanzaniaPhone::firstValid(
+            (string) ($cfms['phone'] ?? ''),
+            (string) ($cfms['extra_phone'] ?? '')
+        );
+        if ($phone === null) {
+            SelfServiceLog::warning('lookup.invalid_phone', [
+                'member_number' => $normalized,
+                'phone' => $cfms['phone'] ?? '',
+            ]);
+            throw new \RuntimeException('Member has no valid registered phone number');
+        }
+        $cfms['phone'] = $phone;
 
         $synced = $this->upsertFromCfms($cfms, $tenantId);
 
