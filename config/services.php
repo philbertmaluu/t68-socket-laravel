@@ -37,10 +37,10 @@ return [
 
     'ictms' => [
         // ICTMS system (their API)
-        'endpoint' => env('ICTMS_API_ENDPOINT', 'https://ictmspre-api.nssf.go.tz/api/send-notification'),
+        'endpoint' => env('ICTMS_API_ENDPOINT', 'https://ictms-api.nssf.go.tz/api/send-notification'),
         'system' => env('ICTMS_SYSTEM', 'ICTMS'),
         'enabled' => env('ICTMS_SMS_ENABLED', true),
-        'api_base' => env('ICTMS_API_BASE', 'https://ictmspre-api.nssf.go.tz'),
+        'api_base' => env('ICTMS_API_BASE', 'https://ictms-api.nssf.go.tz'),
         'access_enabled' => env('ICTMS_ACCESS_ENABLED', true),
         // QMS system (our API – base URL ICTMS will call when integrating)
         'qms_base_url' => env('QMS_BASE_URL', env('APP_URL', 'https://queue-dev-api.nssf.go.tz')),
