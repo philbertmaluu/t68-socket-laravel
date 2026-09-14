@@ -18,7 +18,7 @@ class VerifyMemberRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'member_number' => ['required', 'string', 'max:50'],
+            'member_number' => ['required', 'string', 'min:1', 'max:50'],
         ];
     }
 
