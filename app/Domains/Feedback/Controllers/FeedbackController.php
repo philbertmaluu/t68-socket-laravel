@@ -34,8 +34,18 @@ class FeedbackController extends BaseController
 
     public function context(FeedbackContextRequest $request): JsonResponse
     {
+        return $this->respondWithContext((string) $request->validated()['token']);
+    }
+
+    public function show(string $token): JsonResponse
+    {
+        return $this->respondWithContext($token);
+    }
+
+    private function respondWithContext(string $token): JsonResponse
+    {
         try {
-            $context = $this->service->getContextFromToken((string) $request->validated()['token']);
+            $context = $this->service->getContextFromToken($token);
             return $this->sendResponse($context, 'Feedback context resolved successfully');
         } catch (\RuntimeException $e) {
             return $this->sendError($e->getMessage(), [], 422);

@@ -21,6 +21,8 @@ class FeedbackService
     public function getContextFromToken(string $token): array
     {
         $payload = $this->tokenService->verifyToken($token);
+        $expiresAt = (int) ($payload['exp'] ?? 0);
+
         return [
             'feedback_type' => (string) ($payload['type'] ?? 'general'),
             'tenant_id' => (string) ($payload['tenant_id'] ?? ''),
@@ -28,7 +30,9 @@ class FeedbackService
             'ticket_id' => isset($payload['ticket_id']) ? (string) $payload['ticket_id'] : null,
             'ticket_number' => isset($payload['ticket_number']) ? (string) $payload['ticket_number'] : null,
             'clerk_id' => isset($payload['clerk_id']) ? (string) $payload['clerk_id'] : null,
-            'expires_at' => (int) ($payload['exp'] ?? 0),
+            'expires_at' => $expiresAt > 0
+                ? \Carbon\Carbon::createFromTimestamp($expiresAt)->toIso8601String()
+                : null,
         ];
     }
 
@@ -132,7 +136,7 @@ class FeedbackService
         $baseUrl = rtrim(
             (string) config(
                 'services.qms.feedback_web_url',
-                'https://portal-pre.nssf.go.tz/#/qms/feedback'
+                'https://portal.nssf.go.tz/#/qms/feedback'
             ),
             '/'
         );

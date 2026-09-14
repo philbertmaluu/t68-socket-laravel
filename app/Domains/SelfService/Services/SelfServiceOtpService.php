@@ -94,6 +94,16 @@ class SelfServiceOtpService
             throw new \RuntimeException('This verification code has already been used');
         }
 
+        $member = $this->memberDirectory->findByMemberNumber(
+            $memberNumber,
+            $device?->tenant_id
+        );
+        $challenge->fill([
+            'member_name' => $member['member_name'],
+            'phone' => $this->normalizePhone($member['phone']),
+        ]);
+        $challenge->save();
+
         $resendAfter = (int) config('self_service.otp_resend_seconds', 45);
         if (
             $challenge->last_sent_at !== null

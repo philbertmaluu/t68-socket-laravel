@@ -51,7 +51,7 @@ return [
     'qms' => [
         'feedback_web_url' => env(
             'FEEDBACK_WEB_URL',
-            'https://portal-pre.nssf.go.tz/#/qms/feedback'
+            'https://portal.nssf.go.tz/#/qms/feedback'
         ),
     ],
 

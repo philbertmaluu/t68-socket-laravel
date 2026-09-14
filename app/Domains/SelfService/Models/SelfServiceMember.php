@@ -18,13 +18,16 @@ class SelfServiceMember extends Model
         'member_number',
         'member_name',
         'phone',
+        'email',
         'active',
+        'synced_at',
     ];
 
     protected function casts(): array
     {
         return [
             'active' => 'boolean',
+            'synced_at' => 'datetime',
         ];
     }
 }

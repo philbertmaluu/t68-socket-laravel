@@ -11,6 +11,15 @@ class SubmitFeedbackRequest extends FormRequest
         return true;
     }
 
+    protected function prepareForValidation(): void
+    {
+        $this->merge([
+            'comment_key' => $this->input('comment_key') ?? $this->input('category_key'),
+            'comment_label' => $this->input('comment_label') ?? $this->input('category_label'),
+            'comment_text' => $this->input('comment_text') ?? $this->input('comments'),
+        ]);
+    }
+
     public function rules(): array
     {
         return [
