@@ -203,6 +203,34 @@ class SelfServiceOtpFeatureTest extends TestCase
         ])->assertStatus(401);
     }
 
+    public function test_contribution_statement_returns_cfms_pdf(): void
+    {
+        config()->set('self_service.cfms.api_base', 'https://cfmspre-api.nssf.go.tz');
+        config()->set('self_service.cfms.api_token', 'test-token');
+
+        $pdf = base64_encode("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
+        Http::fake([
+            'https://ictmspre-api.nssf.go.tz/api/send-notification' => Http::response(['success' => true], 200),
+            'https://cfmspre-api.nssf.go.tz/api/data-management/member-statement/*' => Http::response([
+                'success' => true,
+                'data' => $pdf,
+                'message' => 'Successfully retrieved member statement.',
+            ], 200),
+        ]);
+
+        $this->getJson('/api/qms/self-services/members/statement?member_number=4269152', $this->kioskHeaders())
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.member_number', '4269152')
+            ->assertJsonPath('data.scheme_id', 1)
+            ->assertJsonPath('data.pdf_base64', $pdf);
+
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), '/api/data-management/member-statement/4269152/1')
+                && $request->hasHeader('Authorization', 'Bearer test-token');
+        });
+    }
+
     /**
      * @return array<string, string>
      */

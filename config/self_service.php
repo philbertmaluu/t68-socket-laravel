@@ -9,5 +9,9 @@ return [
     'cfms' => [
         'table' => env('SELF_SERVICE_CFMS_MEMBERS_TABLE', 'CFMSPRO.MEMBERS@CFMSPLUS'),
         'active_status' => env('SELF_SERVICE_CFMS_ACTIVE_STATUS', '1'),
+        'api_base' => env('CFMS_API_BASE', 'https://cfmspre-api.nssf.go.tz'),
+        'api_token' => env('CFMS_API_TOKEN'),
+        'statement_timeout' => (int) env('CFMS_STATEMENT_TIMEOUT', 90),
+        'default_scheme_id' => (int) env('SELF_SERVICE_STATEMENT_SCHEME_ID', 1),
     ],
 ];

@@ -8,6 +8,7 @@ use App\Domains\Device\Models\Device;
 use App\Domains\SelfService\Requests\SendOtpRequest;
 use App\Domains\SelfService\Requests\VerifyMemberRequest;
 use App\Domains\SelfService\Requests\VerifyOtpRequest;
+use App\Domains\SelfService\Services\MemberStatementService;
 use App\Domains\SelfService\Services\SelfServiceOtpService;
 use App\Domains\SelfService\Support\SelfServiceLog;
 use App\Http\Controllers\BaseController;
@@ -17,7 +18,8 @@ use Illuminate\Http\Request;
 class SelfServiceAuthController extends BaseController
 {
     public function __construct(
-        private SelfServiceOtpService $selfServiceOtpService
+        private SelfServiceOtpService $selfServiceOtpService,
+        private MemberStatementService $memberStatementService
     ) {
     }
 
@@ -152,6 +154,43 @@ class SelfServiceAuthController extends BaseController
             SelfServiceLog::error('http.member_details.exception', $e);
 
             return $this->sendError('Failed to load member details', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function contributionStatement(Request $request): JsonResponse
+    {
+        $memberNumber = trim((string) $request->query('member_number', ''));
+        $schemeId = $request->query('scheme_id');
+        SelfServiceLog::step('http.contribution_statement', [
+            'member_number' => $memberNumber,
+            'scheme_id' => $schemeId,
+            'device_id' => $this->device($request)?->id,
+        ]);
+
+        if ($memberNumber === '') {
+            return $this->sendError('Member number is required', [], 422);
+        }
+
+        try {
+            $result = $this->memberStatementService->fetch(
+                $memberNumber,
+                $schemeId === null || $schemeId === '' ? null : (int) $schemeId
+            );
+
+            return $this->sendResponse($result, 'Contribution statement retrieved successfully');
+        } catch (\RuntimeException $e) {
+            $status = match ($e->getMessage()) {
+                'Member not found' => 404,
+                'Member number is required', 'Invalid scheme' => 422,
+                default => 502,
+            };
+            SelfServiceLog::error('http.contribution_statement.failed', $e);
+
+            return $this->sendError($e->getMessage(), [], $status);
+        } catch (\Exception $e) {
+            SelfServiceLog::error('http.contribution_statement.exception', $e);
+
+            return $this->sendError('Failed to load contribution statement', ['error' => $e->getMessage()], 500);
         }
     }
 
