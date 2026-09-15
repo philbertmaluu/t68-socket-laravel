@@ -5,39 +5,24 @@ declare(strict_types=1);
 namespace App\Domains\SelfService\Repositories;
 
 use App\Domains\SelfService\Support\SelfServiceLog;
-use Illuminate\Support\Facades\Http;
-use Throwable;
 
 class CfmsStatementClient
 {
+    public function __construct(
+        private CfmsQmsClient $cfmsQmsClient
+    ) {
+    }
+
     /**
      * Valid member → GSD-style Sanctum session, then official statement PDF.
      */
     public function fetchPdfBase64(string $memberId, int $schemeId): string
     {
-        $base = $this->apiBase();
-        $timeout = (int) config('self_service.cfms.statement_timeout', 90);
-        $token = $this->issueMemberSession($memberId, $base, $timeout);
-        $url = "{$base}/qms/member-statement/{$memberId}/{$schemeId}";
-
-        SelfServiceLog::step('statement.cfms.request', [
-            'member_id' => $memberId,
-            'scheme_id' => $schemeId,
-            'url' => $url,
-        ]);
-
-        try {
-            $response = Http::acceptJson()
-                ->timeout($timeout)
-                ->withToken($token)
-                ->get($url);
-        } catch (Throwable $e) {
-            SelfServiceLog::warning('statement.cfms.failed', [
-                'member_id' => $memberId,
-                'error' => $e->getMessage(),
-            ]);
-            throw new \RuntimeException('Unable to load contribution statement');
-        }
+        $response = $this->cfmsQmsClient->get(
+            "qms/member-statement/{$memberId}/{$schemeId}",
+            $memberId,
+            'Unable to load contribution statement'
+        );
 
         if (!$response->successful()) {
             SelfServiceLog::warning('statement.cfms.http', [
@@ -64,47 +49,6 @@ class CfmsStatementClient
         ]);
 
         return $pdf;
-    }
-
-    private function issueMemberSession(string $memberId, string $base, int $timeout): string
-    {
-        SelfServiceLog::step('statement.cfms.session', ['member_id' => $memberId]);
-
-        try {
-            $response = Http::acceptJson()
-                ->timeout($timeout)
-                ->post("{$base}/qms/session", [
-                    'member_id' => (int) $memberId,
-                ]);
-        } catch (Throwable $e) {
-            SelfServiceLog::warning('statement.cfms.session_failed', [
-                'member_id' => $memberId,
-                'error' => $e->getMessage(),
-            ]);
-            throw new \RuntimeException('Unable to create CFMS member session');
-        }
-
-        $token = data_get($response->json(), 'data.token');
-        if (!$response->successful() || !is_string($token) || $token === '') {
-            SelfServiceLog::warning('statement.cfms.session_http', [
-                'member_id' => $memberId,
-                'status' => $response->status(),
-                'message' => data_get($response->json(), 'message'),
-            ]);
-            throw new \RuntimeException('Unable to create CFMS member session');
-        }
-
-        return $token;
-    }
-
-    private function apiBase(): string
-    {
-        $base = rtrim((string) config('self_service.cfms.api_base', 'https://cfmspro-api.nssf.go.tz/api'), '/');
-        if (!str_ends_with(strtolower($base), '/api')) {
-            $base .= '/api';
-        }
-
-        return $base;
     }
 
     private function extractBase64(mixed $payload): string
