@@ -119,7 +119,7 @@ return [
         */
         'oracle' => [
             'driver'         => 'oracle',
-            'tns' => '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=10.10.47.158)(PORT=1521)) (CONNECT_DATA=(SERVICE_NAME=HRPR)))',
+            'tns' => '(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=10.10.47.58)(PORT=1521)) (CONNECT_DATA=(SERVICE_NAME=HRPR)))',
             'database'       => env('DB_DATABASE', ''),
             'username'       => env('DB_USERNAME', ''),
             'password'       => env('DB_PASSWORD', ''),
