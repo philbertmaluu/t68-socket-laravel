@@ -5,10 +5,68 @@ namespace App\Domains\Authentication\Repositories;
 use App\Domains\Authentication\Models\User;
 use App\Domains\Authentication\Models\UserRole;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AuthRepository
 {
     public function getEmployeeByToken(string $token): ?object
+    {
+        try {
+            return $this->usesPreprodHrpd()
+                ? $this->getEmployeeByTokenFromPreprod($token)
+                : $this->getEmployeeByTokenFromLocalView($token);
+        } catch (\Throwable $e) {
+            Log::error('HRPD staff token lookup failed', [
+                'lookup' => $this->usesPreprodHrpd() ? 'preprod' : 'local',
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    public function getEmployeeByPfno(string $pfno): ?object
+    {
+        try {
+            return $this->usesPreprodHrpd()
+                ? $this->getEmployeeByPfnoFromPreprod($pfno)
+                : $this->getEmployeeByPfnoFromLocalView($pfno);
+        } catch (\Throwable $e) {
+            Log::error('HRPD staff pfno lookup failed', [
+                'lookup' => $this->usesPreprodHrpd() ? 'preprod' : 'local',
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
+
+    public function getEmployeeProfile(string $pfno): ?object
+    {
+        return $this->getEmployeeByPfno($pfno);
+    }
+
+    /**
+     * queue-dev uses @preprod. Live (queuepro-api) uses local HRPD view.
+     * Explicit HRPD_STAFF_LOOKUP=preprod|local overrides APP_URL inference.
+     */
+    private function usesPreprodHrpd(): bool
+    {
+        $mode = strtolower(trim((string) config('hrpd.staff_lookup', '')));
+        if ($mode === 'preprod') {
+            return true;
+        }
+        if ($mode === 'local') {
+            return false;
+        }
+
+        $appUrl = strtolower((string) config('app.url'));
+
+        return str_contains($appUrl, 'queue-dev');
+    }
+
+    /** Live QMS: local view, ACCESSTOKEN exposed as TOKEN. Do not change this path. */
+    private function getEmployeeByTokenFromLocalView(string $token): ?object
     {
         $query = "SELECT NID AS NATIONAL_ID,
                          PFNO,
@@ -28,7 +86,30 @@ class AuthRepository
         return DB::selectOne($query, [$token]);
     }
 
-    public function getEmployeeByPfno(string $pfno): ?object
+    /** queue-dev: original intranet token lookup on HRPD@preprod. */
+    private function getEmployeeByTokenFromPreprod(string $token): ?object
+    {
+        $query = "SELECT A.NATIONAL_ID,
+                         A.PFNO,
+                         B.POSITIONID,
+                         A.FNAME,
+                         A.MNAME,
+                         A.SNAME,
+                         A.GENDER,
+                         C.OFFICE_CODE,
+                         B.OFFICE_NAME,
+                         A.MOBILE,
+                         A.EMAIL,
+                         B.DU_ID
+                  FROM HRPD.EMPLOYEE@PREPROD A
+                  JOIN HRPD.VW_EMPLOYEE_DETAILS@PREPROD B ON B.PFNO = A.PFNO
+                  LEFT JOIN HRPD.OFFICE@PREPROD C ON C.OFFICE_ID = B.OFFICE_ID
+                  WHERE A.ACCESSTOKEN = ? AND A.EMPLOYEE_STATUS = 'A'";
+
+        return DB::selectOne($query, [$token]);
+    }
+
+    private function getEmployeeByPfnoFromLocalView(string $pfno): ?object
     {
         $query = "SELECT NID AS NATIONAL_ID,
                          PFNO,
@@ -48,21 +129,24 @@ class AuthRepository
         return DB::selectOne($query, [$pfno]);
     }
 
-    public function getEmployeeProfile(string $pfno): ?object
+    private function getEmployeeByPfnoFromPreprod(string $pfno): ?object
     {
-        $query = "SELECT NID AS NATIONAL_ID,
-                         PFNO,
-                         FNAME,
-                         MNAME,
-                         SNAME,
-                         GENDER,
-                         OFFICE_CODE,
-                         OFFICE_NAME,
-                         POSITIONID,
-                         MOBILE,
-                         EMAIL
-                  FROM HRPD.VW_EMPLOYEE_DETAILS
-                  WHERE PFNO = ?";
+        $query = "SELECT A.NATIONAL_ID,
+                         A.PFNO,
+                         B.POSITIONID,
+                         B.DU_ID,
+                         A.FNAME,
+                         A.MNAME,
+                         A.SNAME,
+                         A.GENDER,
+                         C.OFFICE_CODE,
+                         B.OFFICE_NAME,
+                         A.MOBILE,
+                         A.EMAIL
+                  FROM HRPD.EMPLOYEE@PREPROD A
+                  JOIN HRPD.VW_EMPLOYEE_DETAILS@PREPROD B ON B.PFNO = A.PFNO
+                  LEFT JOIN HRPD.OFFICE@PREPROD C ON C.OFFICE_ID = B.OFFICE_ID
+                  WHERE A.PFNO = ? AND A.EMPLOYEE_STATUS = 'A'";
 
         return DB::selectOne($query, [$pfno]);
     }

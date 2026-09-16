@@ -24,7 +24,8 @@ class AuthService
         $employee = $this->repository->getEmployeeByToken($token);
 
         if (empty($employee)) {
-            Log::warning('QMS SSO authenticate: no active HRPD.VW_EMPLOYEE_DETAILS row for TOKEN', [
+            Log::warning('QMS SSO authenticate: no matching HR employee for token', [
+                'lookup' => str_contains(strtolower((string) config('app.url')), 'queue-dev') ? 'preprod' : 'local',
                 'token_length' => strlen($token),
             ]);
             throw new \Exception('Failed Authentication.');
