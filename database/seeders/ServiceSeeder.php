@@ -3,19 +3,25 @@
 namespace Database\Seeders;
 
 use App\Domains\Service\Models\Service;
+use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
 class ServiceSeeder extends Seeder
 {
+    use WithoutModelEvents;
+
     /**
-     * Seed the global services catalog (office assignment is via office_services).
+     * Seed the services catalog table only (does not touch office_services).
+     *
+     * Safe to re-run in production:
+     *   php artisan db:seed --class=ServiceSeeder --force
      *
      * IDs match the NSSF QMS catalog (ID 10 intentionally absent).
      */
     public function run(): void
     {
-        $tenant = DB::table('tenants')->first();
+        $tenant = DB::table('tenants')->orderBy('id')->first();
 
         if (!$tenant) {
             $this->command?->warn('No tenant found. Please run TenantSeeder first.');
@@ -23,6 +29,7 @@ class ServiceSeeder extends Seeder
         }
 
         $tenantId = $tenant->id;
+        app()->instance('tenant.id', $tenantId);
 
         $services = [
             [
@@ -95,7 +102,6 @@ class ServiceSeeder extends Seeder
                 'swahili_name' => 'Utambulisho',
                 'estimated_time' => 20,
             ],
-
             [
                 'id' => 12,
                 'name' => 'Special Needs',
@@ -120,21 +126,74 @@ class ServiceSeeder extends Seeder
 
         ];
 
-        foreach ($services as $row) {
-            Service::withTrashed()->updateOrCreate(
-                ['id' => $row['id']],
-                [
-                    'tenant_id' => $tenantId,
-                    'name' => $row['name'],
-                    'description' => $row['description'],
-                    'swahili_name' => $row['swahili_name'],
-                    'estimated_time' => $row['estimated_time'],
-                    'status' => 'ACTIVE',
-                    'deleted_at' => null,
-                ]
-            );
+        $created = 0;
+        $updated = 0;
+
+        Service::unguarded(function () use ($services, $tenantId, &$created, &$updated) {
+            foreach ($services as $row) {
+                $model = Service::withoutGlobalScopes()
+                    ->withTrashed()
+                    ->updateOrCreate(
+                        ['id' => $row['id']],
+                        [
+                            'tenant_id' => $tenantId,
+                            'name' => $row['name'],
+                            'description' => $row['description'],
+                            'swahili_name' => $row['swahili_name'],
+                            'estimated_time' => $row['estimated_time'],
+                            'status' => 'ACTIVE',
+                            'deleted_at' => null,
+                            'deleted_by' => null,
+                        ]
+                    );
+
+                if ($model->wasRecentlyCreated) {
+                    $created++;
+                } else {
+                    $updated++;
+                }
+            }
+        });
+
+        $this->syncOracleIdSequence('services');
+
+        $this->command?->info("Services table upsert complete: {$created} created, {$updated} updated.");
+        $this->command?->info('Re-run in prod: php artisan db:seed --class=ServiceSeeder --force');
+    }
+
+    /**
+     * Explicit IDs leave the Oracle sequence behind; bump it so later inserts do not collide.
+     */
+    private function syncOracleIdSequence(string $table): void
+    {
+        if (DB::connection()->getDriverName() !== 'oracle') {
+            return;
         }
 
-        $this->command?->info('Seeded ' . count($services) . ' catalog services (IDs preserved).');
+        $max = (int) (DB::table($table)->max('id') ?? 0);
+        if ($max < 1) {
+            return;
+        }
+
+        $candidates = [
+            strtoupper($table) . '_ID_SEQ',
+            strtolower($table) . '_id_seq',
+        ];
+
+        foreach ($candidates as $seq) {
+            try {
+                do {
+                    $row = DB::selectOne("SELECT {$seq}.NEXTVAL AS n FROM DUAL");
+                    $n = (int) ($row->n ?? $row->N ?? 0);
+                } while ($n < $max);
+
+                $this->command?->info("Oracle sequence {$seq} is at or above {$max}.");
+                return;
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        $this->command?->warn("Could not advance {$table} ID sequence after seeding explicit IDs.");
     }
 }
