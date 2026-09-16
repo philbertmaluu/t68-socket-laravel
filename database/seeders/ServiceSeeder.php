@@ -95,6 +95,29 @@ class ServiceSeeder extends Seeder
                 'swahili_name' => 'Utambulisho',
                 'estimated_time' => 20,
             ],
+
+            [
+                'id' => 12,
+                'name' => 'Special Needs',
+                'description' => 'Mahitaji maalum',
+                'swahili_name' => 'Mahitaji maalum',
+                'estimated_time' => 20,
+            ],
+            [
+                'id' => 13,
+                'name' => 'Open Registry',
+                'description' => 'Masijala ya wazi',
+                'swahili_name' => 'Masijala ya wazi',
+                'estimated_time' => 20,
+            ],
+            [
+                'id' => 14,
+                'name' => 'Complaints',
+                'description' => 'Malalamiko',
+                'swahili_name' => 'Malalamiko',
+                'estimated_time' => 20,
+            ],
+
         ];
 
         foreach ($services as $row) {
