@@ -20,9 +20,14 @@ class AuthService
 
     public function authenticate(string $token): array
     {
+        $token = trim($token);
         $employee = $this->repository->getEmployeeByToken($token);
-        
+
         if (empty($employee)) {
+            Log::warning('QMS SSO authenticate: no active HRPD employee for ACCESSTOKEN', [
+                'dblink' => config('hrpd.dblink'),
+                'token_length' => strlen($token),
+            ]);
             throw new \Exception('Failed Authentication.');
         }
 

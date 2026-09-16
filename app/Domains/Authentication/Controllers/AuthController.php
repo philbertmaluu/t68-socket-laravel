@@ -8,6 +8,7 @@ use App\Domains\Authentication\Services\AuthService;
 use App\Http\Controllers\BaseController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends BaseController
 {
@@ -24,6 +25,9 @@ class AuthController extends BaseController
             $result = $this->service->authenticate($request->validated()['token']);
             return $this->sendResponse($result, 'Authenticated successfully.');
         } catch (\Exception $e) {
+            Log::warning('QMS SSO authenticate failed', [
+                'error' => $e->getMessage(),
+            ]);
             return $this->sendError('Failed Authentication.', ['error' => $e->getMessage()], 401);
         }
     }

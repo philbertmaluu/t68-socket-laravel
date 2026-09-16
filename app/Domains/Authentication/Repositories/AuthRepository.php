@@ -10,48 +10,51 @@ class AuthRepository
 {
     public function getEmployeeByToken(string $token): ?object
     {
+        $employee = $this->hrpdRelation('EMPLOYEE');
+        $details = $this->hrpdRelation('VW_EMPLOYEE_DETAILS');
+        $office = $this->hrpdRelation('OFFICE');
 
-        // Use HRPD database link
-        $query = "select a.national_id, a.pfno, b.positionid, a.fname, a.mname, a.sname, a.gender, c.office_code, b.office_name, a.mobile, a.email, b.du_id 
-                  from hrpd.employee@preprod a 
-                  join hrpd.vw_employee_details@preprod b on b.pfno = a.pfno 
-                  left join hrpd.office@preprod c on c.office_id = b.office_id 
-                  where a.accesstoken=? and a.employee_status='A'";
-        
+        // Same lookup as CFMS Pro AuthenticationController::authenticate
+        $query = "SELECT A.NATIONAL_ID, A.PFNO, B.POSITIONID, A.FNAME, A.MNAME, A.SNAME, A.GENDER,
+                         C.OFFICE_CODE, B.OFFICE_NAME, A.MOBILE, A.EMAIL, B.DU_ID
+                  FROM {$employee} A
+                  JOIN {$details} B ON B.PFNO = A.PFNO
+                  LEFT JOIN {$office} C ON C.OFFICE_ID = B.OFFICE_ID
+                  WHERE A.ACCESSTOKEN = ? AND A.EMPLOYEE_STATUS = 'A'";
+
         return DB::selectOne($query, [$token]);
     }
 
-    
-
     public function getEmployeeByPfno(string $pfno): ?object
     {
-       
-        
-        // Use HRPD database
+        $employee = $this->hrpdRelation('EMPLOYEE');
+        $details = $this->hrpdRelation('VW_EMPLOYEE_DETAILS');
+        $office = $this->hrpdRelation('OFFICE');
 
-        $query = "select a.national_id, a.pfno, b.positionid, b.du_id, a.fname, a.mname, a.sname, a.gender, c.office_code, b.office_name, a.mobile, a.email 
-                  from hrpd.employee a 
-                  join hrpd.vw_employee_details b on b.pfno = a.pfno 
-                  left join hrpd.office c on c.office_id = b.office_id 
-                  where a.pfno=? and a.employee_status='A'";
-        
+        $query = "SELECT A.NATIONAL_ID, A.PFNO, B.POSITIONID, B.DU_ID, A.FNAME, A.MNAME, A.SNAME, A.GENDER,
+                         C.OFFICE_CODE, B.OFFICE_NAME, A.MOBILE, A.EMAIL
+                  FROM {$employee} A
+                  JOIN {$details} B ON B.PFNO = A.PFNO
+                  LEFT JOIN {$office} C ON C.OFFICE_ID = B.OFFICE_ID
+                  WHERE A.PFNO = ? AND A.EMPLOYEE_STATUS = 'A'";
+
         return DB::selectOne($query, [$pfno]);
-    
     }
 
     public function getEmployeeProfile(string $pfno): ?object
     {
-        
-        // Use HRPD database
-        
-        $query = "SELECT A.NATIONAL_ID, A.PFNO, A.FNAME, A.MNAME, A.SNAME, A.GENDER, C.OFFICE_CODE, B.OFFICE_NAME, B.POSITIONID, A.MOBILE, A.EMAIL 
-                  FROM HRPD.EMPLOYEE A 
-                  JOIN HRPD.VW_EMPLOYEE_DETAILS B ON B.PFNO = A.PFNO 
-                  LEFT JOIN HRPD.OFFICE C ON C.OFFICE_ID = B.OFFICE_ID 
-                  WHERE A.PFNO=? AND A.EMPLOYEE_STATUS='A'";
-        
+        $employee = $this->hrpdRelation('EMPLOYEE');
+        $details = $this->hrpdRelation('VW_EMPLOYEE_DETAILS');
+        $office = $this->hrpdRelation('OFFICE');
+
+        $query = "SELECT A.NATIONAL_ID, A.PFNO, A.FNAME, A.MNAME, A.SNAME, A.GENDER,
+                         C.OFFICE_CODE, B.OFFICE_NAME, B.POSITIONID, A.MOBILE, A.EMAIL
+                  FROM {$employee} A
+                  JOIN {$details} B ON B.PFNO = A.PFNO
+                  LEFT JOIN {$office} C ON C.OFFICE_ID = B.OFFICE_ID
+                  WHERE A.PFNO = ? AND A.EMPLOYEE_STATUS = 'A'";
+
         return DB::selectOne($query, [$pfno]);
-        
     }
 
     public function findUserByPfno(string $pfno): ?User
@@ -561,5 +564,28 @@ class AuthRepository
             ]);
 
         return $affected > 0;
+    }
+
+    /**
+     * Qualify an HRPD object with the configured Oracle database link.
+     * Production matches CFMS Pro: HRPD.EMPLOYEE@HRLIVE
+     */
+    private function hrpdRelation(string $object): string
+    {
+        $object = strtoupper($object);
+        if (!preg_match('/^[A-Z][A-Z0-9_]*$/', $object)) {
+            throw new \InvalidArgumentException('Invalid HRPD object name.');
+        }
+
+        $dblink = strtoupper(trim((string) config('hrpd.dblink', 'HRLIVE')));
+        if ($dblink === '') {
+            return 'HRPD.' . $object;
+        }
+
+        if (!preg_match('/^[A-Z][A-Z0-9_]*$/', $dblink)) {
+            throw new \InvalidArgumentException('Invalid HRPD database link.');
+        }
+
+        return 'HRPD.' . $object . '@' . $dblink;
     }
 }
