@@ -28,7 +28,7 @@ class AuthController extends BaseController
             Log::warning('QMS SSO authenticate failed', [
                 'error' => $e->getMessage(),
             ]);
-            return $this->sendError('Failed Authentication.', ['error' => $e->getMessage()], 401);
+            return $this->sendError('Failed Authentication.', [], 401);
         }
     }
 

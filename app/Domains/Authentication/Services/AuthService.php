@@ -24,8 +24,7 @@ class AuthService
         $employee = $this->repository->getEmployeeByToken($token);
 
         if (empty($employee)) {
-            Log::warning('QMS SSO authenticate: no active HRPD employee for ACCESSTOKEN', [
-                'dblink' => config('hrpd.dblink'),
+            Log::warning('QMS SSO authenticate: no active HRPD.VW_EMPLOYEE_DETAILS row for TOKEN', [
                 'token_length' => strlen($token),
             ]);
             throw new \Exception('Failed Authentication.');
