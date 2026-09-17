@@ -38,19 +38,19 @@ class TicketAnnounceService
      */
     public function requestCallNext(?string $ticketId = null): array
     {
-        return TransactionHelper::execute(function () use ($ticketId) {
-            $user = Auth::guard('sanctum')->user();
-            if (!$user || !isset($user->id)) {
-                throw new AuthenticationException('User not authenticated');
-            }
+        $user = Auth::guard('sanctum')->user();
+        if (!$user || !isset($user->id)) {
+            throw new AuthenticationException('User not authenticated');
+        }
 
-            $location = $this->getUserOfficeAndRegionFromHrp();
-            $officeId = (string) $location['office_id'];
-            $clerkId = (string) $user->id;
+        $location = $this->getUserOfficeAndRegionFromHrp();
+        $officeId = (string) $location['office_id'];
+        $clerkId = (string) $user->id;
 
-            // Stale cleanup only on write path (not on TV polls).
-            $this->releaseStaleLocksAndJobs($officeId);
+        // Outside the announce-lock TX — live Oracle waits here used to block call-next for ~60s.
+        $this->releaseStaleLocksAndJobs($officeId);
 
+        $gate = TransactionHelper::execute(function () use ($officeId, $clerkId) {
             $existingPendingId = PendingTicketCall::query()
                 ->where('office_id', $officeId)
                 ->where('clerk_id', $clerkId)
@@ -59,16 +59,11 @@ class TicketAnnounceService
                 ->value('id');
 
             if ($existingPendingId) {
-                return [
-                    'status' => 'queued',
-                    'pending_id' => $existingPendingId,
-                    'message' => 'Wait — another ticket is being announced. Yours will be called automatically.',
-                ];
+                return $this->queuedPayload((string) $existingPendingId);
             }
 
-            $lock = $this->lockOfficeRow($officeId);
-
-            if ($lock->is_announcing) {
+            $lock = $this->tryLockOfficeRow($officeId);
+            if ($lock === null || $lock->is_announcing) {
                 $pending = PendingTicketCall::create([
                     'office_id' => $officeId,
                     'clerk_id' => $clerkId,
@@ -76,18 +71,39 @@ class TicketAnnounceService
                     'requested_at' => now(),
                 ]);
 
+                return $this->queuedPayload((string) $pending->id);
+            }
+
+            return ['status' => 'slot'];
+        });
+
+        if (($gate['status'] ?? '') === 'queued') {
+            return $gate;
+        }
+
+        $ticketPayload = $ticketId
+            ? $this->ticketService->callWaitingTicketForUser($user, $ticketId)
+            : $this->ticketService->callNextTicketForUser($user);
+
+        return TransactionHelper::execute(function () use ($officeId, $clerkId, $ticketPayload) {
+            $lock = $this->tryLockOfficeRow($officeId);
+            if ($lock === null || $lock->is_announcing) {
+                PendingTicketCall::create([
+                    'office_id' => $officeId,
+                    'clerk_id' => $clerkId,
+                    'status' => PendingTicketCall::STATUS_WAITING,
+                    'ticket_id' => $ticketPayload['id'] ?? null,
+                    'requested_at' => now(),
+                ]);
+
                 return [
-                    'status' => 'queued',
-                    'pending_id' => $pending->id,
-                    'message' => 'Wait — another ticket is being announced. Yours will be called automatically.',
+                    'status' => 'called',
+                    'ticket' => $ticketPayload,
+                    'announce_id' => null,
                 ];
             }
 
-            $ticketPayload = $ticketId
-                ? $this->ticketService->callWaitingTicketForUser($user, $ticketId)
-                : $this->ticketService->callNextTicketForUser($user);
             $job = $this->createAnnounceJobFromPayload($officeId, $ticketPayload);
-
             $lock->update([
                 'is_announcing' => true,
                 'current_announce_id' => $job->id,
@@ -110,22 +126,22 @@ class TicketAnnounceService
      */
     public function requestAnnounceForClaimedTicket(array $ticketPayload): array
     {
-        $run = function () use ($ticketPayload) {
-            $user = Auth::guard('sanctum')->user();
-            if (!$user || !isset($user->id)) {
-                throw new AuthenticationException('User not authenticated');
-            }
+        $user = Auth::guard('sanctum')->user();
+        if (!$user || !isset($user->id)) {
+            throw new AuthenticationException('User not authenticated');
+        }
 
-            $location = $this->getUserOfficeAndRegionFromHrp();
-            $officeId = (string) $location['office_id'];
-            $clerkId = (string) $user->id;
-            $ticketId = $ticketPayload['id'] ?? null;
+        $location = $this->getUserOfficeAndRegionFromHrp();
+        $officeId = (string) $location['office_id'];
+        $clerkId = (string) $user->id;
+        $ticketId = $ticketPayload['id'] ?? null;
 
-            $this->releaseStaleLocksAndJobs($officeId);
+        $this->releaseStaleLocksAndJobs($officeId);
 
-            $lock = $this->lockOfficeRow($officeId);
+        return TransactionHelper::execute(function () use ($officeId, $clerkId, $ticketId, $ticketPayload) {
+            $lock = $this->tryLockOfficeRow($officeId);
 
-            if ($lock->is_announcing) {
+            if ($lock === null || $lock->is_announcing) {
                 $pending = PendingTicketCall::create([
                     'office_id' => $officeId,
                     'clerk_id' => $clerkId,
@@ -143,7 +159,6 @@ class TicketAnnounceService
             }
 
             $job = $this->createAnnounceJobFromPayload($officeId, $ticketPayload);
-
             $lock->update([
                 'is_announcing' => true,
                 'current_announce_id' => $job->id,
@@ -155,13 +170,7 @@ class TicketAnnounceService
                 'ticket' => $ticketPayload,
                 'announce_id' => $job->id,
             ];
-        };
-
-        if (DB::transactionLevel() === 0) {
-            return TransactionHelper::execute($run);
-        }
-
-        return $run();
+        });
     }
 
     /**
@@ -278,7 +287,7 @@ class TicketAnnounceService
             throw new UnprocessableEntityHttpException('Device is not assigned to an office');
         }
 
-        return TransactionHelper::execute(function () use ($officeId, $announceId) {
+        $result = TransactionHelper::execute(function () use ($officeId, $announceId) {
             $updated = TicketAnnounceJob::query()
                 ->where('id', $announceId)
                 ->where('office_id', $officeId)
@@ -304,8 +313,8 @@ class TicketAnnounceService
                 ];
             }
 
-            $lock = $this->lockOfficeRow($officeId);
-            if ((string) $lock->current_announce_id === (string) $announceId || $lock->is_announcing) {
+            $lock = $this->tryLockOfficeRow($officeId);
+            if ($lock && ((string) $lock->current_announce_id === (string) $announceId || $lock->is_announcing)) {
                 $lock->update([
                     'is_announcing' => false,
                     'current_announce_id' => null,
@@ -313,14 +322,25 @@ class TicketAnnounceService
                 ]);
             }
 
-            $autoCalled = $this->processNextPendingCall($officeId);
-
             return [
                 'status' => 'acked',
                 'announce_id' => $announceId,
-                'auto_called' => $autoCalled,
             ];
         });
+
+        $autoCalled = null;
+        try {
+            $autoCalled = $this->processNextPendingCall($officeId);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to drain pending call after announce ack', [
+                'office_id' => $officeId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        $result['auto_called'] = $autoCalled;
+
+        return $result;
     }
 
     /**
@@ -411,28 +431,41 @@ class TicketAnnounceService
 
     private function processNextPendingCall(string $officeId): ?array
     {
-        if (DB::transactionLevel() === 0) {
-            return TransactionHelper::execute(fn () => $this->processNextPendingCall($officeId));
-        }
+        $claimed = TransactionHelper::execute(function () use ($officeId) {
+            $pending = PendingTicketCall::query()
+                ->where('office_id', $officeId)
+                ->where('status', PendingTicketCall::STATUS_WAITING)
+                ->orderBy('requested_at')
+                ->lockForUpdate()
+                ->skipLocked()
+                ->first();
 
-        $pending = PendingTicketCall::query()
-            ->where('office_id', $officeId)
-            ->where('status', PendingTicketCall::STATUS_WAITING)
-            ->orderBy('requested_at')
-            ->lockForUpdate()
-            ->first();
+            if (!$pending) {
+                return null;
+            }
 
-        if (!$pending) {
+            $user = User::query()->find($pending->clerk_id);
+            if (!$user) {
+                $pending->update(['status' => PendingTicketCall::STATUS_CANCELLED]);
+                return ['retry' => true];
+            }
+
+            $pending->update(['status' => PendingTicketCall::STATUS_PROCESSING]);
+
+            return ['pending' => $pending, 'user' => $user];
+        });
+
+        if ($claimed === null) {
             return null;
         }
-
-        $pending->update(['status' => PendingTicketCall::STATUS_PROCESSING]);
-
-        $user = User::query()->find($pending->clerk_id);
-        if (!$user) {
-            $pending->update(['status' => PendingTicketCall::STATUS_CANCELLED]);
+        if (!empty($claimed['retry'])) {
             return $this->processNextPendingCall($officeId);
         }
+
+        /** @var PendingTicketCall $pending */
+        $pending = $claimed['pending'];
+        /** @var User $user */
+        $user = $claimed['user'];
 
         try {
             if ($pending->ticket_id) {
@@ -457,25 +490,36 @@ class TicketAnnounceService
             return $this->processNextPendingCall($officeId);
         }
 
-        $job = $this->createAnnounceJobFromPayload($officeId, $ticketPayload);
-        $lock = $this->lockOfficeRow($officeId);
-        $lock->update([
-            'is_announcing' => true,
-            'current_announce_id' => $job->id,
-            'started_at' => now(),
-        ]);
+        return TransactionHelper::execute(function () use ($officeId, $pending, $ticketPayload) {
+            $lock = $this->tryLockOfficeRow($officeId);
+            if ($lock === null || $lock->is_announcing) {
+                $pending->update([
+                    'status' => PendingTicketCall::STATUS_WAITING,
+                    'ticket_id' => $ticketPayload['id'] ?? $pending->ticket_id,
+                ]);
 
-        $pending->update([
-            'status' => PendingTicketCall::STATUS_DONE,
-            'ticket_id' => $ticketPayload['id'] ?? $pending->ticket_id,
-        ]);
+                return null;
+            }
 
-        return [
-            'pending_id' => $pending->id,
-            'clerk_id' => $pending->clerk_id,
-            'announce_id' => $job->id,
-            'ticket' => $ticketPayload,
-        ];
+            $job = $this->createAnnounceJobFromPayload($officeId, $ticketPayload);
+            $lock->update([
+                'is_announcing' => true,
+                'current_announce_id' => $job->id,
+                'started_at' => now(),
+            ]);
+
+            $pending->update([
+                'status' => PendingTicketCall::STATUS_DONE,
+                'ticket_id' => $ticketPayload['id'] ?? $pending->ticket_id,
+            ]);
+
+            return [
+                'pending_id' => $pending->id,
+                'clerk_id' => $pending->clerk_id,
+                'announce_id' => $job->id,
+                'ticket' => $ticketPayload,
+            ];
+        });
     }
 
     private function createAnnounceJobFromPayload(string $officeId, array $ticketPayload): TicketAnnounceJob
@@ -501,31 +545,64 @@ class TicketAnnounceService
         ]);
     }
 
-    private function lockOfficeRow(string $officeId): OfficeAnnounceLock
+    /**
+     * @return array{status: string, pending_id: string, message: string}
+     */
+    private function queuedPayload(string $pendingId): array
+    {
+        return [
+            'status' => 'queued',
+            'pending_id' => $pendingId,
+            'message' => 'Wait — another ticket is being announced. Yours will be called automatically.',
+        ];
+    }
+
+    /**
+     * Non-blocking office lock. Null means another session holds the row —
+     * treat as busy so clerks are not stuck until the HTTP client aborts.
+     */
+    private function tryLockOfficeRow(string $officeId): ?OfficeAnnounceLock
     {
         $lock = OfficeAnnounceLock::query()
             ->where('office_id', $officeId)
             ->lockForUpdate()
+            ->skipLocked()
             ->first();
 
-        if (!$lock) {
-            OfficeAnnounceLock::query()->firstOrCreate(
-                ['office_id' => $officeId],
-                [
-                    'is_announcing' => false,
-                    'current_announce_id' => null,
-                    'started_at' => null,
-                    'created_at' => now(),
-                ]
-            );
-
-            $lock = OfficeAnnounceLock::query()
-                ->where('office_id', $officeId)
-                ->lockForUpdate()
-                ->first();
+        if ($lock) {
+            return $lock;
         }
 
-        return $lock;
+        $exists = OfficeAnnounceLock::query()->where('office_id', $officeId)->exists();
+        if ($exists) {
+            return null;
+        }
+
+        OfficeAnnounceLock::query()->firstOrCreate(
+            ['office_id' => $officeId],
+            [
+                'is_announcing' => false,
+                'current_announce_id' => null,
+                'started_at' => null,
+                'created_at' => now(),
+            ]
+        );
+
+        return OfficeAnnounceLock::query()
+            ->where('office_id', $officeId)
+            ->lockForUpdate()
+            ->skipLocked()
+            ->first();
+    }
+
+    private function lockOfficeRow(string $officeId): OfficeAnnounceLock
+    {
+        $lock = $this->tryLockOfficeRow($officeId);
+        if ($lock) {
+            return $lock;
+        }
+
+        throw new UnprocessableEntityHttpException('Office announce lock is busy');
     }
 
     public function releaseStaleLocksAndJobs(?string $officeId = null): void
