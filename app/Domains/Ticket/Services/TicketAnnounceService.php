@@ -432,13 +432,12 @@ class TicketAnnounceService
     private function processNextPendingCall(string $officeId): ?array
     {
         $claimed = TransactionHelper::execute(function () use ($officeId) {
-            $pending = PendingTicketCall::query()
-                ->where('office_id', $officeId)
-                ->where('status', PendingTicketCall::STATUS_WAITING)
-                ->orderBy('requested_at')
-                ->lockForUpdate()
-                ->skipLocked()
-                ->first();
+            $pending = $this->firstWithNowaitLock(
+                PendingTicketCall::query()
+                    ->where('office_id', $officeId)
+                    ->where('status', PendingTicketCall::STATUS_WAITING)
+                    ->orderBy('requested_at')
+            );
 
             if (!$pending) {
                 return null;
@@ -563,11 +562,9 @@ class TicketAnnounceService
      */
     private function tryLockOfficeRow(string $officeId): ?OfficeAnnounceLock
     {
-        $lock = OfficeAnnounceLock::query()
-            ->where('office_id', $officeId)
-            ->lockForUpdate()
-            ->skipLocked()
-            ->first();
+        $lock = $this->firstWithNowaitLock(
+            OfficeAnnounceLock::query()->where('office_id', $officeId)
+        );
 
         if ($lock) {
             return $lock;
@@ -588,11 +585,34 @@ class TicketAnnounceService
             ]
         );
 
-        return OfficeAnnounceLock::query()
-            ->where('office_id', $officeId)
-            ->lockForUpdate()
-            ->skipLocked()
-            ->first();
+        return $this->firstWithNowaitLock(
+            OfficeAnnounceLock::query()->where('office_id', $officeId)
+        );
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<\Illuminate\Database\Eloquent\Model>  $query
+     */
+    private function firstWithNowaitLock($query)
+    {
+        try {
+            return $query->lock('for update nowait')->first();
+        } catch (\Throwable $e) {
+            if ($this->isRowBusyLockError($e)) {
+                return null;
+            }
+            throw $e;
+        }
+    }
+
+    private function isRowBusyLockError(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+
+        return str_contains($message, 'ORA-00054')
+            || str_contains($message, 'NOWAIT')
+            || str_contains($message, '55P03')
+            || str_contains(strtolower($message), 'could not obtain lock');
     }
 
     private function lockOfficeRow(string $officeId): OfficeAnnounceLock
