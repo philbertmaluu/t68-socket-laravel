@@ -27,7 +27,9 @@ class CounterService
 
     public function findById(int|string $id, bool $withTrashed = false): ?Counter
     {
-        return $this->repository->findById($id, $withTrashed);
+        $counter = $this->repository->findById($id, $withTrashed);
+
+        return $counter ? $this->attachClerkPayload($counter) : null;
     }
 
     public function findAll(array $filters = []): Collection
@@ -38,11 +40,10 @@ class CounterService
     public function createCounter(array $data): Counter
     {
         return TransactionHelper::execute(function () use ($data) {
-            $clerkId = $data['clerk_id'] ?? null;
-            unset($data['clerk_id']);
+            $clerkIds = $this->extractClerkIds($data);
             $data = $this->fillOfficeRegionFromHrp($data);
             $counter = $this->repository->create($data);
-            $this->syncCounterClerkAssignment($counter, $clerkId);
+            $this->syncCounterClerkAssignments($counter, $clerkIds ?? []);
             return $this->attachClerkPayload($counter->fresh(['services']));
         });
     }
@@ -50,13 +51,11 @@ class CounterService
     public function updateCounter(Counter $counter, array $data): Counter
     {
         return TransactionHelper::execute(function () use ($counter, $data) {
-            $clerkPayloadProvided = array_key_exists('clerk_id', $data);
-            $clerkId = $data['clerk_id'] ?? null;
-            unset($data['clerk_id']);
+            $clerkIds = $this->extractClerkIds($data);
             $data = $this->fillOfficeRegionFromHrp($data);
             $updatedCounter = $this->repository->update($counter, $data);
-            if ($clerkPayloadProvided) {
-                $this->syncCounterClerkAssignment($updatedCounter, $clerkId);
+            if ($clerkIds !== null) {
+                $this->syncCounterClerkAssignments($updatedCounter, $clerkIds);
             }
             return $this->attachClerkPayload($updatedCounter->fresh(['services']));
         });
@@ -210,89 +209,129 @@ class CounterService
         ];
     }
 
-    private function syncCounterClerkAssignment(Counter $counter, ?string $clerkId): void
+    /**
+     * @return list<string>|null Null when the request did not include clerk assignment fields.
+     */
+    private function extractClerkIds(array &$data): ?array
     {
-        $normalizedClerkId = trim((string) $clerkId);
+        $provided = array_key_exists('clerk_ids', $data) || array_key_exists('clerk_id', $data);
 
-        if ($normalizedClerkId === '') {
+        if (array_key_exists('clerk_ids', $data)) {
+            $clerkIds = is_array($data['clerk_ids']) ? $data['clerk_ids'] : [];
+        } elseif (array_key_exists('clerk_id', $data)) {
+            $clerkIds = $data['clerk_id'] ? [$data['clerk_id']] : [];
+        } else {
+            $clerkIds = [];
+        }
+
+        unset($data['clerk_id'], $data['clerk_ids']);
+
+        return $provided ? $this->normalizeClerkIds($clerkIds) : null;
+    }
+
+    /**
+     * @param list<mixed> $clerkIds
+     * @return list<string>
+     */
+    private function normalizeClerkIds(array $clerkIds): array
+    {
+        $normalized = [];
+        foreach ($clerkIds as $clerkId) {
+            $id = trim((string) $clerkId);
+            if ($id === '') {
+                continue;
+            }
+            $normalized[$id] = $id;
+        }
+
+        return array_values($normalized);
+    }
+
+    /**
+     * @param list<string> $clerkIds
+     */
+    private function syncCounterClerkAssignments(Counter $counter, array $clerkIds): void
+    {
+        $counterId = (string) $counter->id;
+
+        CounterClerk::query()
+            ->where('counter_id', $counterId)
+            ->where('is_active', true)
+            ->when(
+                count($clerkIds) > 0,
+                fn ($query) => $query->whereNotIn('clerk_id', $clerkIds)
+            )
+            ->update([
+                'is_active' => false,
+                'unassigned_at' => now(),
+            ]);
+
+        foreach ($clerkIds as $clerkId) {
             CounterClerk::query()
-                ->where('counter_id', (string) $counter->id)
+                ->where('clerk_id', $clerkId)
+                ->where('counter_id', '!=', $counterId)
                 ->where('is_active', true)
                 ->update([
                     'is_active' => false,
                     'unassigned_at' => now(),
                 ]);
-            return;
-        }
 
-        // A clerk should only have one active counter assignment.
-        CounterClerk::query()
-            ->where('clerk_id', $normalizedClerkId)
-            ->where('counter_id', '!=', (string) $counter->id)
-            ->where('is_active', true)
-            ->update([
-                'is_active' => false,
-                'unassigned_at' => now(),
-            ]);
+            $assignment = CounterClerk::query()
+                ->where('counter_id', $counterId)
+                ->where('clerk_id', $clerkId)
+                ->first();
 
-        // Counter should have one active clerk assignment.
-        CounterClerk::query()
-            ->where('counter_id', (string) $counter->id)
-            ->where('clerk_id', '!=', $normalizedClerkId)
-            ->where('is_active', true)
-            ->update([
-                'is_active' => false,
-                'unassigned_at' => now(),
-            ]);
+            if ($assignment) {
+                $assignment->update([
+                    'is_active' => true,
+                    'assigned_at' => now(),
+                    'unassigned_at' => null,
+                ]);
+                continue;
+            }
 
-        $assignment = CounterClerk::query()
-            ->where('counter_id', (string) $counter->id)
-            ->where('clerk_id', $normalizedClerkId)
-            ->first();
-
-        if ($assignment) {
-            $assignment->update([
+            CounterClerk::query()->create([
+                'counter_id' => $counterId,
+                'clerk_id' => $clerkId,
                 'is_active' => true,
                 'assigned_at' => now(),
                 'unassigned_at' => null,
             ]);
-            return;
         }
-
-        CounterClerk::query()->create([
-            'counter_id' => (string) $counter->id,
-            'clerk_id' => $normalizedClerkId,
-            'is_active' => true,
-            'assigned_at' => now(),
-            'unassigned_at' => null,
-        ]);
     }
 
     private function attachClerkPayload(Counter $counter): Counter
     {
-        $assignment = CounterClerk::query()
+        $assignments = CounterClerk::query()
             ->where('counter_id', (string) $counter->id)
             ->where('is_active', true)
-            ->latest('assigned_at')
-            ->first();
+            ->orderBy('assigned_at')
+            ->get();
 
-        if (!$assignment) {
-            $counter->setAttribute('clerk', null);
-            return $counter;
-        }
+        $clerkIds = $assignments->pluck('clerk_id')->filter()->unique()->values()->all();
+        $users = empty($clerkIds)
+            ? collect()
+            : User::query()
+                ->select(['id', 'user_id', 'name', 'email', 'user_type'])
+                ->whereIn('id', $clerkIds)
+                ->get()
+                ->keyBy(fn (User $user) => (string) $user->id);
 
-        $user = User::query()
-            ->select(['id', 'user_id', 'name', 'email', 'user_type'])
-            ->find($assignment->clerk_id);
+        $clerks = $assignments->map(function (CounterClerk $assignment) use ($users) {
+            $user = $users->get((string) $assignment->clerk_id);
 
-        $counter->setAttribute('clerk', [
-            'id' => (string) $assignment->clerk_id,
-            'pfno' => $user?->user_id,
-            'name' => $user?->name,
-            'email' => $user?->email,
-            'department' => $user?->user_type,
-            'assigned_at' => $assignment->assigned_at?->toIso8601String(),
-        ]);
+            return [
+                'id' => (string) $assignment->clerk_id,
+                'pfno' => $user?->user_id,
+                'name' => $user?->name,
+                'email' => $user?->email,
+                'department' => $user?->user_type,
+                'assigned_at' => $assignment->assigned_at?->toIso8601String(),
+            ];
+        })->values()->all();
+
+        $counter->setAttribute('clerks', $clerks);
+        $counter->setAttribute('clerk', $clerks[0] ?? null);
 
         return $counter;
     }

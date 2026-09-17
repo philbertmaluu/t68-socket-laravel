@@ -157,15 +157,15 @@ class CounterRepository
 
         $counterIds = $counters->pluck('id')->map(fn ($id) => (string) $id)->values()->all();
 
-        $assignments = CounterClerk::query()
+        $assignmentsByCounter = CounterClerk::query()
             ->whereIn('counter_id', $counterIds)
             ->where('is_active', true)
-            ->orderByDesc('assigned_at')
+            ->orderBy('assigned_at')
             ->get()
-            ->groupBy(fn ($a) => (string) $a->counter_id)
-            ->map(fn ($group) => $group->first());
+            ->groupBy(fn ($a) => (string) $a->counter_id);
 
-        $clerkIds = $assignments
+        $clerkIds = $assignmentsByCounter
+            ->flatMap(fn ($group) => $group)
             ->pluck('clerk_id')
             ->filter()
             ->map(fn ($id) => (string) $id)
@@ -173,28 +173,31 @@ class CounterRepository
             ->values()
             ->all();
 
-        $users = User::query()
-            ->select(['id', 'user_id', 'name', 'email', 'user_type'])
-            ->whereIn('id', $clerkIds)
-            ->get()
-            ->keyBy(fn ($u) => (string) $u->id);
+        $users = empty($clerkIds)
+            ? collect()
+            : User::query()
+                ->select(['id', 'user_id', 'name', 'email', 'user_type'])
+                ->whereIn('id', $clerkIds)
+                ->get()
+                ->keyBy(fn ($u) => (string) $u->id);
 
         foreach ($counters as $counter) {
-            $assignment = $assignments->get((string) $counter->id);
-            if (!$assignment) {
-                $counter->setAttribute('clerk', null);
-                continue;
-            }
+            $assignments = $assignmentsByCounter->get((string) $counter->id) ?? collect();
+            $clerks = $assignments->map(function ($assignment) use ($users) {
+                $user = $users->get((string) $assignment->clerk_id);
 
-            $user = $users->get((string) $assignment->clerk_id);
-            $counter->setAttribute('clerk', [
-                'id' => (string) $assignment->clerk_id,
-                'pfno' => $user?->user_id,
-                'name' => $user?->name,
-                'email' => $user?->email,
-                'department' => $user?->user_type,
-                'assigned_at' => $assignment->assigned_at?->toIso8601String(),
-            ]);
+                return [
+                    'id' => (string) $assignment->clerk_id,
+                    'pfno' => $user?->user_id,
+                    'name' => $user?->name,
+                    'email' => $user?->email,
+                    'department' => $user?->user_type,
+                    'assigned_at' => $assignment->assigned_at?->toIso8601String(),
+                ];
+            })->values()->all();
+
+            $counter->setAttribute('clerks', $clerks);
+            $counter->setAttribute('clerk', $clerks[0] ?? null);
         }
     }
 }

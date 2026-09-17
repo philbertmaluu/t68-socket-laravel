@@ -571,13 +571,19 @@ class DashboardService
                 $counterId = (string) $counter->id;
                 $served = $servedStats->get($counterId);
                 $ticket = $currentTickets->get($counterId);
-                $activeClerkId = $counter->activeCounterClerks->first()?->clerk_id;
+                $officerNames = $counter->activeCounterClerks
+                    ->pluck('clerk_id')
+                    ->filter()
+                    ->map(fn ($clerkId) => $clerkNames->get((string) $clerkId))
+                    ->filter()
+                    ->unique()
+                    ->values();
 
                 return [
                     'id' => $counterId,
                     'name' => (string) $counter->name,
                     'type' => $this->resolveCounterType($counter->counterType?->code, $counter->counterType?->name),
-                    'officer' => $activeClerkId ? ($clerkNames->get((string) $activeClerkId) ?? 'Unassigned') : 'Unassigned',
+                    'officer' => $officerNames->isNotEmpty() ? $officerNames->implode(', ') : 'Unassigned',
                     'status' => $this->mapCounterStatus((string) $counter->status, $ticket !== null),
                     'currentTicket' => $ticket?->ticket_number,
                     'ticketsServed' => (int) ($served?->served_count ?? 0),
