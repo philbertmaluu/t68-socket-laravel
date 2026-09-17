@@ -40,6 +40,30 @@ class Counter extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::saving(function (Counter $counter) {
+            $counter->offsetUnset('clerk');
+            $counter->offsetUnset('clerks');
+        });
+    }
+
+    /**
+     * Attach clerk payload for API responses without marking it as a DB column.
+     *
+     * @param array<string, mixed>|null $clerk
+     * @param list<array<string, mixed>> $clerks
+     */
+    public function withClerkPayload(?array $clerk, array $clerks): self
+    {
+        $this->setAttribute('clerks', $clerks);
+        $this->setAttribute('clerk', $clerk);
+        $this->syncOriginalAttribute('clerks');
+        $this->syncOriginalAttribute('clerk');
+
+        return $this;
+    }
+
     /** One counter has many services via counter_services (counter_id, service_id, office_id). */
     public function services(): BelongsToMany
     {

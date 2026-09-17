@@ -330,9 +330,6 @@ class CounterService
             ];
         })->values()->all();
 
-        $counter->setAttribute('clerks', $clerks);
-        $counter->setAttribute('clerk', $clerks[0] ?? null);
-
-        return $counter;
+        return $counter->withClerkPayload($clerks[0] ?? null, $clerks);
     }
 }

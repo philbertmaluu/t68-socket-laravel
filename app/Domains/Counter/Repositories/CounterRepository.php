@@ -89,7 +89,9 @@ class CounterRepository
             }
             $counter->services()->sync($sync);
         }
-        unset($data['service_ids']);
+        unset($data['service_ids'], $data['clerk'], $data['clerks'], $data['clerk_id'], $data['clerk_ids']);
+        $counter->offsetUnset('clerk');
+        $counter->offsetUnset('clerks');
         $counter->update($data);
         return $counter->fresh(['services']);
     }
@@ -196,8 +198,7 @@ class CounterRepository
                 ];
             })->values()->all();
 
-            $counter->setAttribute('clerks', $clerks);
-            $counter->setAttribute('clerk', $clerks[0] ?? null);
+            $counter->withClerkPayload($clerks[0] ?? null, $clerks);
         }
     }
 }
