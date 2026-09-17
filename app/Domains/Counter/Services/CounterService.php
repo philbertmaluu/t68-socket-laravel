@@ -131,7 +131,8 @@ class CounterService
      *   office_name: string|null,
      *   status: string|null,
      *   counter_type: array{id: string|int|null, name: string|null, code: string|null},
-     *   clerk: array{id: string|int|null, pfno: string|null, name: string|null}
+     *   clerk: array{id: string|int|null, pfno: string|null, name: string|null},
+     *   services: list<array{id: string|int, name: string, swahili_name: string|null, status: string|null}>
      * }
      */
     public function getCurrentUserCounter(): array
@@ -167,7 +168,7 @@ class CounterService
         }
 
         $counter = Counter::query()
-            ->with('counterType')
+            ->with(['counterType', 'services:id,name,swahili_name,status'])
             ->where('office_id', $officeId)
             ->find($assignment->counter_id);
 
@@ -195,6 +196,17 @@ class CounterService
                 'pfno' => $user->pfno ?? null,
                 'name' => $user->name ?? null,
             ],
+            'services' => $counter->services
+                ->map(static function ($service) {
+                    return [
+                        'id' => $service->id,
+                        'name' => (string) ($service->name ?? ''),
+                        'swahili_name' => $service->swahili_name ? (string) $service->swahili_name : null,
+                        'status' => $service->status ? (string) $service->status : null,
+                    ];
+                })
+                ->values()
+                ->all(),
         ];
     }
 

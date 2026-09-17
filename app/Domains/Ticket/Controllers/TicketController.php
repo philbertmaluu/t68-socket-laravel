@@ -428,13 +428,35 @@ class TicketController extends BaseController
     }
 
     /**
-     * Resume a transferred or further-notice hold ticket.
+     * Resume a transferred or further-notice hold ticket and announce it on TV.
      */
     public function resume(string $id): JsonResponse
     {
         try {
             $ticket = $this->service->resumeAttentionTicket($id);
-            return $this->sendResponse($ticket, 'Ticket resumed successfully');
+            $announceService = new TicketAnnounceService($this->service);
+            $result = $announceService->requestAnnounceForClaimedTicket($ticket);
+
+            if (($result['status'] ?? '') === 'queued') {
+                return $this->sendResponse(
+                    array_merge(is_array($ticket) ? $ticket : [], [
+                        'call_status' => 'queued',
+                        'pending_id' => $result['pending_id'] ?? null,
+                        'message' => $result['message'] ?? null,
+                    ]),
+                    $result['message'] ?? 'Call queued',
+                    [],
+                    202
+                );
+            }
+
+            return $this->sendResponse(
+                array_merge(is_array($ticket) ? $ticket : [], [
+                    'call_status' => 'called',
+                    'announce_id' => $result['announce_id'] ?? null,
+                ]),
+                'Ticket resumed successfully'
+            );
         } catch (AuthenticationException $e) {
             return $this->sendError($e->getMessage(), [], 401);
         } catch (NotFoundHttpException $e) {

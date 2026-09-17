@@ -103,6 +103,68 @@ class TicketAnnounceService
     }
 
     /**
+     * Announce a ticket already claimed (accept transfer / resume hold).
+     *
+     * @param array<string, mixed> $ticketPayload
+     * @return array{status: string, message?: string, pending_id?: string, ticket?: array, announce_id?: string}
+     */
+    public function requestAnnounceForClaimedTicket(array $ticketPayload): array
+    {
+        $run = function () use ($ticketPayload) {
+            $user = Auth::guard('sanctum')->user();
+            if (!$user || !isset($user->id)) {
+                throw new AuthenticationException('User not authenticated');
+            }
+
+            $location = $this->getUserOfficeAndRegionFromHrp();
+            $officeId = (string) $location['office_id'];
+            $clerkId = (string) $user->id;
+            $ticketId = $ticketPayload['id'] ?? null;
+
+            $this->releaseStaleLocksAndJobs($officeId);
+
+            $lock = $this->lockOfficeRow($officeId);
+
+            if ($lock->is_announcing) {
+                $pending = PendingTicketCall::create([
+                    'office_id' => $officeId,
+                    'clerk_id' => $clerkId,
+                    'status' => PendingTicketCall::STATUS_WAITING,
+                    'ticket_id' => $ticketId,
+                    'requested_at' => now(),
+                ]);
+
+                return [
+                    'status' => 'queued',
+                    'pending_id' => $pending->id,
+                    'ticket' => $ticketPayload,
+                    'message' => 'Wait — another ticket is being announced. Yours will be called automatically.',
+                ];
+            }
+
+            $job = $this->createAnnounceJobFromPayload($officeId, $ticketPayload);
+
+            $lock->update([
+                'is_announcing' => true,
+                'current_announce_id' => $job->id,
+                'started_at' => now(),
+            ]);
+
+            return [
+                'status' => 'called',
+                'ticket' => $ticketPayload,
+                'announce_id' => $job->id,
+            ];
+        };
+
+        if (DB::transactionLevel() === 0) {
+            return TransactionHelper::execute($run);
+        }
+
+        return $run();
+    }
+
+    /**
      * Ultra-light peek for board poll — PK lock row then PK job. No writes.
      */
     public function peekPendingAnnounceForOffice(string $officeId): ?array
@@ -373,7 +435,18 @@ class TicketAnnounceService
         }
 
         try {
-            $ticketPayload = $this->ticketService->callNextTicketForUser($user);
+            if ($pending->ticket_id) {
+                $ticketPayload = $this->ticketService->getClaimedTicketPayloadForUser(
+                    $user,
+                    (string) $pending->ticket_id
+                );
+                if ($ticketPayload === null) {
+                    $pending->update(['status' => PendingTicketCall::STATUS_CANCELLED]);
+                    return $this->processNextPendingCall($officeId);
+                }
+            } else {
+                $ticketPayload = $this->ticketService->callNextTicketForUser($user);
+            }
         } catch (\Throwable $e) {
             Log::warning('Auto call-next failed for pending clerk', [
                 'clerk_id' => $pending->clerk_id,
@@ -394,7 +467,7 @@ class TicketAnnounceService
 
         $pending->update([
             'status' => PendingTicketCall::STATUS_DONE,
-            'ticket_id' => $ticketPayload['id'] ?? null,
+            'ticket_id' => $ticketPayload['id'] ?? $pending->ticket_id,
         ]);
 
         return [

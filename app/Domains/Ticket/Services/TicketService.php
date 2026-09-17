@@ -304,6 +304,39 @@ class TicketService
     }
 
     /**
+     * Format a ticket already claimed by this clerk (called/serving/paused) for TV announce.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function getClaimedTicketPayloadForUser(User $user, string $ticketId): ?array
+    {
+        $location = $this->getUserOfficeAndRegionFromHrpForUser($user);
+        $officeId = (string) $location['office_id'];
+        $clerkIds = $this->resolveClerkIdentityCandidates($user);
+
+        $ticket = Ticket::query()
+            ->where('id', $ticketId)
+            ->where('office_id', $officeId)
+            ->whereIn('clerk_id', $clerkIds)
+            ->whereIn('status', ['called', 'serving', 'paused'])
+            ->first();
+
+        if (!$ticket) {
+            return null;
+        }
+
+        $counter = null;
+        if ($ticket->counter_id) {
+            $counter = Counter::query()
+                ->with('counterType')
+                ->where('office_id', $officeId)
+                ->find($ticket->counter_id);
+        }
+
+        return $this->formatClerkTicketPayload($ticket, $counter);
+    }
+
+    /**
      * Get the authenticated clerk's incomplete ticket (called or serving) for their HRPD office.
      */
     public function getActiveClerkTicket(): ?array
