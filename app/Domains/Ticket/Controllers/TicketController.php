@@ -232,7 +232,8 @@ class TicketController extends BaseController
     {
         try {
             $announceService = new TicketAnnounceService($this->service);
-            $result = $announceService->requestCallNext();
+            $ticketId = trim((string) $request->input('ticket_id', ''));
+            $result = $announceService->requestCallNext($ticketId !== '' ? $ticketId : null);
 
             if (($result['status'] ?? '') === 'queued') {
                 return $this->sendResponse($result, $result['message'] ?? 'Call queued', [], 202);

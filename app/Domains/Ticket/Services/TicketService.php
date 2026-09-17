@@ -16,6 +16,7 @@ use App\Domains\Ticket\Repositories\TicketRepository;
 use App\Shared\Helpers\TransactionHelper;
 use App\Traits\UserOfficeTrait;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -252,71 +253,45 @@ class TicketService
     }
 
     /**
-     * Call the next waiting ticket for a specific clerk (used by announce auto-call).
+     * Call the next waiting ticket whose service is assigned to this clerk's counter.
      */
     public function callNextTicketForUser(User $user): array
     {
         return TransactionHelper::execute(function () use ($user) {
-            $location = $this->getUserOfficeAndRegionFromHrpForUser($user);
-            $officeId = (string) $location['office_id'];
-            $clerkIds = $this->resolveClerkIdentityCandidates($user);
+            [$officeId, $counter] = $this->resolveClerkCounterForCall($user);
 
-            $activeTicket = $this->findActiveTicketForClerk($clerkIds, $officeId);
-            if ($activeTicket) {
-                throw new UnprocessableEntityHttpException(
-                    'Complete the current ticket before calling the next one.'
-                );
-            }
-
-            $counterAssignment = CounterClerk::query()
-                ->whereIn('clerk_id', $clerkIds)
-                ->where('is_active', true)
-                ->latest('assigned_at')
-                ->first();
-
-            if (!$counterAssignment) {
-                throw new UnprocessableEntityHttpException('User not assigned to a counter');
-            }
-
-            $counter = Counter::query()
-                ->with('counterType')
-                ->where('office_id', $officeId)
-                ->find($counterAssignment->counter_id);
-
-            if (!$counter) {
-                throw new NotFoundHttpException('Assigned counter not found');
-            }
-
-            $queue = DB::table('queues')
-                ->where('counter_id', $counter->id)
-                ->first();
-
-            if (!$queue) {
-                throw new NotFoundHttpException('No queue found for assigned counter');
-            }
-
-            $ticket = Ticket::query()
-                ->where('queue_id', (string) $queue->id)
-                ->where('office_id', $officeId)
-                ->where('status', 'waiting')
+            $ticket = $this->waitingTicketsEligibleForCounter($officeId, (string) $counter->id)
                 ->orderBy('queue_position', 'asc')
                 ->orderBy('created_at', 'asc')
                 ->first();
 
             if (!$ticket) {
-                throw new NotFoundHttpException('No waiting ticket found in queue');
+                throw new NotFoundHttpException('No waiting ticket found for this counter\'s services');
             }
 
-            $ticket->update([
-                'status' => 'called',
-                'counter_id' => (string) $counter->id,
-                'clerk_id' => (string) $user->id,
-                'called_at' => now(),
-            ]);
+            return $this->markTicketCalledByClerk($ticket, $user, $counter);
+        });
+    }
 
-            $ticket = $ticket->fresh();
+    /**
+     * Call a specific waiting ticket if its service is assigned to this clerk's counter.
+     */
+    public function callWaitingTicketForUser(User $user, string $ticketId): array
+    {
+        return TransactionHelper::execute(function () use ($user, $ticketId) {
+            [$officeId, $counter] = $this->resolveClerkCounterForCall($user);
 
-            return $this->formatClerkTicketPayload($ticket, $counter);
+            $ticket = $this->waitingTicketsEligibleForCounter($officeId, (string) $counter->id)
+                ->where('id', $ticketId)
+                ->first();
+
+            if (!$ticket) {
+                throw new UnprocessableEntityHttpException(
+                    'Ticket is not waiting or its service is not assigned to this counter'
+                );
+            }
+
+            return $this->markTicketCalledByClerk($ticket, $user, $counter);
         });
     }
 
@@ -750,6 +725,111 @@ class TicketService
     }
 
     /**
+     * Waiting tickets in this office whose service is assigned to the counter.
+     *
+     * @return Builder<Ticket>
+     */
+    private function waitingTicketsEligibleForCounter(string $officeId, string $counterId): Builder
+    {
+        $serviceIds = DB::table('counter_services')
+            ->where('counter_id', $counterId)
+            ->where('office_id', $officeId)
+            ->pluck('service_id')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $query = Ticket::query()
+            ->where('office_id', $officeId)
+            ->where('status', 'waiting');
+
+        if ($serviceIds === []) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $serviceNames = DB::table('services')
+            ->whereIn('id', $serviceIds)
+            ->pluck('name')
+            ->map(fn ($name) => (string) $name)
+            ->values()
+            ->all();
+
+        return $query->where(function ($q) use ($serviceIds, $serviceNames) {
+            $q->whereIn('service_id', $serviceIds);
+            if ($serviceNames !== []) {
+                $q->orWhere(function ($legacy) use ($serviceNames) {
+                    $legacy->whereNull('service_id')->whereIn('service_type', $serviceNames);
+                });
+            }
+        });
+    }
+
+    private function counterHasAssignedServices(string $officeId, string $counterId): bool
+    {
+        return DB::table('counter_services')
+            ->where('counter_id', $counterId)
+            ->where('office_id', $officeId)
+            ->exists();
+    }
+
+    /**
+     * @return array{0: string, 1: Counter}
+     */
+    private function resolveClerkCounterForCall(User $user): array
+    {
+        $location = $this->getUserOfficeAndRegionFromHrpForUser($user);
+        $officeId = (string) $location['office_id'];
+        $clerkIds = $this->resolveClerkIdentityCandidates($user);
+
+        $activeTicket = $this->findActiveTicketForClerk($clerkIds, $officeId);
+        if ($activeTicket) {
+            throw new UnprocessableEntityHttpException(
+                'Complete the current ticket before calling the next one.'
+            );
+        }
+
+        $counterAssignment = CounterClerk::query()
+            ->whereIn('clerk_id', $clerkIds)
+            ->where('is_active', true)
+            ->latest('assigned_at')
+            ->first();
+
+        if (!$counterAssignment) {
+            throw new UnprocessableEntityHttpException('User not assigned to a counter');
+        }
+
+        $counter = Counter::query()
+            ->with('counterType')
+            ->where('office_id', $officeId)
+            ->find($counterAssignment->counter_id);
+
+        if (!$counter) {
+            throw new NotFoundHttpException('Assigned counter not found');
+        }
+
+        if (!$this->counterHasAssignedServices($officeId, (string) $counter->id)) {
+            throw new UnprocessableEntityHttpException('Counter has no assigned services');
+        }
+
+        return [$officeId, $counter];
+    }
+
+    private function markTicketCalledByClerk(Ticket $ticket, User $user, Counter $counter): array
+    {
+        $ticket->update([
+            'status' => 'called',
+            'counter_id' => (string) $counter->id,
+            'clerk_id' => (string) $user->id,
+            'called_at' => now(),
+        ]);
+
+        $ticket = $ticket->fresh();
+
+        return $this->formatClerkTicketPayload($ticket, $counter);
+    }
+
+    /**
      * Find incomplete ticket for this clerk in the given office.
      *
      * @param list<string> $clerkIds
@@ -878,40 +958,32 @@ class TicketService
             }
 
             $counterId = (string) $counterAssignment->counter_id;
-            $queueId = $counterAssignment->queue_id
-                ? (string) $counterAssignment->queue_id
-                : null;
-
-            if (!$queueId) {
-                $queue = DB::table('queues')
-                    ->where('counter_id', $counterId)
-                    ->where('office_id', $officeId)
-                    ->first();
-
-                if (!$queue) {
-                    throw new NotFoundHttpException('No queue found for assigned counter');
-                }
-
-                $queueId = (string) $queue->id;
-            }
             $clerkId = (string) $user->id;
             $scope = strtolower((string) ($filters['scope'] ?? 'all'));
 
-            $ticketsQuery = Ticket::query()
+            $queue = DB::table('queues')
+                ->where('counter_id', $counterId)
                 ->where('office_id', $officeId)
-                ->where('queue_id', $queueId);
+                ->first();
+            $queueId = $queue
+                ? (string) $queue->id
+                : ($counterAssignment->queue_id ? (string) $counterAssignment->queue_id : null);
 
-            // Waiting tickets are counter-level (no clerk yet), history is clerk-level.
+            $ticketsQuery = Ticket::query()->where('office_id', $officeId);
+
             if ($scope === 'waiting') {
-                $ticketsQuery->where('status', 'waiting');
+                $ticketsQuery = $this->waitingTicketsEligibleForCounter($officeId, $counterId);
             } elseif ($scope === 'history') {
                 $ticketsQuery
                     ->where('status', '!=', 'waiting')
                     ->where('clerk_id', $clerkId);
             } else {
-                $ticketsQuery->where(function ($query) use ($clerkId) {
+                $eligibleWaiting = $this->waitingTicketsEligibleForCounter($officeId, $counterId);
+                $ticketsQuery->where(function ($query) use ($clerkId, $eligibleWaiting) {
                     $query
-                        ->where('status', 'waiting')
+                        ->where(function ($waitingQuery) use ($eligibleWaiting) {
+                            $waitingQuery->whereIn('id', $eligibleWaiting->select('id'));
+                        })
                         ->orWhere(function ($historyQuery) use ($clerkId) {
                             $historyQuery
                                 ->where('status', '!=', 'waiting')

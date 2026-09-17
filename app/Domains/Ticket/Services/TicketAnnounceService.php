@@ -33,11 +33,12 @@ class TicketAnnounceService
     }
 
     /**
+     * @param string|null $ticketId Optional waiting ticket to call instead of FIFO next.
      * @return array{status: string, message?: string, pending_id?: string, ticket?: array, announce_id?: string}
      */
-    public function requestCallNext(): array
+    public function requestCallNext(?string $ticketId = null): array
     {
-        return TransactionHelper::execute(function () {
+        return TransactionHelper::execute(function () use ($ticketId) {
             $user = Auth::guard('sanctum')->user();
             if (!$user || !isset($user->id)) {
                 throw new AuthenticationException('User not authenticated');
@@ -82,7 +83,9 @@ class TicketAnnounceService
                 ];
             }
 
-            $ticketPayload = $this->ticketService->callNextTicketForUser($user);
+            $ticketPayload = $ticketId
+                ? $this->ticketService->callWaitingTicketForUser($user, $ticketId)
+                : $this->ticketService->callNextTicketForUser($user);
             $job = $this->createAnnounceJobFromPayload($officeId, $ticketPayload);
 
             $lock->update([
