@@ -185,29 +185,36 @@ class TicketService
         }
         
         // Step 3: Get or create queue for this counter (1:1 relationship)
-        $queue = DB::table('queues')
+        return (string) $this->findOrCreateQueueForCounter($counter, $officeId)->id;
+    }
+
+    /**
+     * One queue per counter. Destination counters after transfer often have none yet.
+     */
+    private function findOrCreateQueueForCounter(Counter $counter, string $officeId): Queue
+    {
+        $queue = Queue::withTrashed()
             ->where('counter_id', $counter->id)
             ->first();
-        
+
         if ($queue) {
-            return (string) $queue->id; // Convert to string for consistency
+            if ($queue->trashed()) {
+                $queue->restore();
+            }
+
+            return $queue;
         }
-        
-        // Create new queue for this counter (ID will be auto-generated)
+
         // Queues.status has an Oracle CHECK constraint: ('BUSY', 'NORMAL', 'CRITICAL', 'FREE')
-        $queueId = DB::table('queues')->insertGetId([
+        return Queue::create([
             'counter_id' => $counter->id,
             'name' => $counter->name . ' Queue',
             'status' => 'NORMAL',
-            'members_waiting' => 1,
+            'members_waiting' => 0,
             'members_being_served' => 0,
             'average_wait_time' => 0,
             'office_id' => $officeId,
-            'created_at' => now(),
-            'updated_at' => now(),
         ]);
-        
-        return (string) $queueId; // Convert to string for consistency
     }
 
     /** @var int Max numeric suffix per letter block (matches voice assets A–Z and 1–500). */
@@ -609,13 +616,7 @@ class TicketService
                 throw new NotFoundHttpException('Assigned counter not found');
             }
 
-            $queue = Queue::query()
-                ->where('counter_id', $counter->id)
-                ->first();
-
-            if (!$queue) {
-                throw new NotFoundHttpException('No queue found for assigned counter');
-            }
+            $queue = $this->findOrCreateQueueForCounter($counter, $officeId);
 
             $ticket->update([
                 'status' => 'called',
