@@ -556,36 +556,79 @@ class AuthRepository
         ])->all();
     }
 
+    public function findUserByPfnoIncludingTrashed(string $pfno): ?User
+    {
+        return User::withoutTenant()
+            ->withTrashed()
+            ->where('user_id', trim($pfno))
+            ->first();
+    }
+
     /**
-     * Ensure user exists for PFNO; create minimal user if not (name from HRPD or "Unknown").
+     * Ensure user exists for PFNO. Create only when no users.user_id match (including soft-deleted).
      */
     public function getOrCreateUserByPfno(string $pfno, ?int $createdByUserId = null): User
     {
-        $user = User::withoutTenant()->where('user_id', $pfno)->first();
+        $pfno = trim($pfno);
+        $user = $this->findUserByPfnoIncludingTrashed($pfno);
         if ($user) {
+            if ($user->trashed()) {
+                $user->restore();
+            }
+
             return $user;
         }
 
-        $name = 'Unknown';
+        $name = 'Staff '.$pfno;
+        $email = 'pfno'.$pfno.'@nssf.local';
         try {
             $employee = $this->getEmployeeByPfno($pfno);
             if ($employee) {
-                $name = trim(($employee->fname ?? '') . ' ' . ($employee->mname ?? '') . ' ' . ($employee->sname ?? '')) ?: 'Unknown';
+                $fromHr = trim(($employee->fname ?? '').' '.($employee->mname ?? '').' '.($employee->sname ?? ''));
+                if ($fromHr !== '') {
+                    $name = $fromHr;
+                }
+                if (!empty($employee->email)) {
+                    $email = (string) $employee->email;
+                }
             }
         } catch (\Throwable $e) {
-            // HRPD may be unavailable; use Unknown
+            // HRPD may be unavailable; use PFNO defaults
         }
 
         return $this->createUser([
             'tenant_id' => 1,
             'user_id' => $pfno,
             'user_type' => 'staff',
-            'name' => $name,
-            'email' => 'pfno' . $pfno . '@nssf.local',
-            'password' => bcrypt($pfno),
+            'name' => $this->uniqueUserName($name, $pfno),
+            'email' => $this->uniqueUserEmail($email, $pfno),
+            'password' => $pfno,
             'is_active' => true,
             'created_by' => $createdByUserId,
         ]);
+    }
+
+    private function uniqueUserName(string $name, string $pfno): string
+    {
+        $base = $name !== '' ? $name : 'Staff '.$pfno;
+        $candidate = $base;
+        $exists = User::withoutTenant()->withTrashed()->where('name', $candidate)->exists();
+        if ($exists) {
+            $candidate = $base.' ('.$pfno.')';
+        }
+
+        return $candidate;
+    }
+
+    private function uniqueUserEmail(string $email, string $pfno): string
+    {
+        $candidate = $email !== '' ? $email : 'pfno'.$pfno.'@nssf.local';
+        $exists = User::withoutTenant()->withTrashed()->where('email', $candidate)->exists();
+        if ($exists) {
+            $candidate = 'pfno'.$pfno.'@nssf.local';
+        }
+
+        return $candidate;
     }
 
     /**
@@ -606,34 +649,58 @@ class AuthRepository
 
     /**
      * Assign role to user (ICTMS assign-role payload item).
-     * Finds or creates the user from HRP (getOrCreateUserByPfno) if they do not exist.
+     * Creates the user from PFNO only when they do not already exist.
+     *
+     * @return array{user_id: int, pfno: string, fullname: string, created: bool}
      */
-    public function assignRoleToUser(array $item): void
+    public function assignRoleToUser(array $item): array
     {
-        $pfno = (string) ($item['PFNO'] ?? $item['pfno'] ?? '');
+        $pfno = trim((string) ($item['PFNO'] ?? $item['pfno'] ?? ''));
         $roleId = (int) ($item['ROLE_ID'] ?? $item['role_id'] ?? 0);
         $fromDate = $item['FROM_DATE'] ?? $item['from_date'] ?? now()->format('Y-m-d');
         $toDate = $item['TO_DATE'] ?? $item['to_date'] ?? null;
-        $createdByPfno = $item['CREATED_BY'] ?? null;
+        $createdByPfno = $item['CREATED_BY'] ?? $item['created_by'] ?? null;
 
-        if ($pfno === '' || !$roleId) {
-            return;
+        if ($pfno === '') {
+            throw new \InvalidArgumentException('pfno is required');
         }
 
         $createdByUserId = $this->resolveCreatedBy($createdByPfno);
+        $alreadyExisted = $this->findUserByPfnoIncludingTrashed($pfno) !== null;
         $user = $this->getOrCreateUserByPfno($pfno, $createdByUserId);
 
-        $from = \Carbon\Carbon::parse($fromDate)->startOfDay();
-        $to = $toDate ? \Carbon\Carbon::parse($toDate)->endOfDay() : null;
+        if ($roleId > 0) {
+            $from = \Carbon\Carbon::parse($fromDate)->startOfDay();
+            $to = $toDate ? \Carbon\Carbon::parse($toDate)->endOfDay() : null;
 
-        UserRole::create([
-            'user_id' => $user->id,
-            'role_id' => $roleId,
-            'start_date' => $from,
-            'end_date' => $to,
-            'status' => 'active',
-            'created_by' => $createdByUserId,
-        ]);
+            $alreadyAssigned = UserRole::query()
+                ->where('user_id', $user->id)
+                ->where('role_id', $roleId)
+                ->where('status', 'active')
+                ->where(function ($query) {
+                    $query->whereNull('end_date')
+                        ->orWhere('end_date', '>=', now());
+                })
+                ->exists();
+
+            if (!$alreadyAssigned) {
+                UserRole::create([
+                    'user_id' => $user->id,
+                    'role_id' => $roleId,
+                    'start_date' => $from,
+                    'end_date' => $to,
+                    'status' => 'active',
+                    'created_by' => $createdByUserId,
+                ]);
+            }
+        }
+
+        return [
+            'user_id' => (int) $user->id,
+            'pfno' => (string) $user->user_id,
+            'fullname' => (string) ($user->name ?? ''),
+            'created' => !$alreadyExisted,
+        ];
     }
 
     /**

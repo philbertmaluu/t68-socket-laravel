@@ -62,13 +62,13 @@ class IctmsAccessService
         if ($pfno === '') {
             return ['pfno' => '', 'fullname' => '', 'created' => false];
         }
+        $alreadyExisted = $this->repository->findUserByPfnoIncludingTrashed($pfno) !== null;
         $user = $this->repository->getOrCreateUserByPfno($pfno, $createdByUserId);
-        $created = (bool) $user->wasRecentlyCreated;
         return [
             'user_id' => (int) $user->id,
             'pfno' => $user->user_id,
             'fullname' => $user->name ?? 'Unknown',
-            'created' => $created,
+            'created' => !$alreadyExisted,
         ];
     }
 
@@ -101,19 +101,28 @@ class IctmsAccessService
      * Accepts either:
      * - An array of items: [ { PFNO, ROLE_ID, FROM_DATE?, TO_DATE?, CREATED_BY? }, ... ]
      * - A single object with ROLE_IDS: { PFNO, ROLE_IDS: [id, ...], FROM_DATE?, TO_DATE?, CREATED_BY? }
-     * Each user is found or created from HRP if they do not exist; then each role is assigned.
+     * Creates the user from PFNO only when they do not already exist; then each role is assigned.
+     *
+     * @return list<array{user_id: int, pfno: string, fullname: string, created: bool}>
      */
-    public function assignRolesToUser(array $payload): void
+    public function assignRolesToUser(array $payload): array
     {
         $items = $this->expandAssignRolesPayload($payload);
+        if ($items === []) {
+            throw new \InvalidArgumentException('pfno is required');
+        }
+
+        $results = [];
         foreach ($items as $item) {
             try {
-                $this->repository->assignRoleToUser($item);
+                $results[] = $this->repository->assignRoleToUser($item);
             } catch (\Throwable $e) {
                 Log::warning('assign-roles item failed', ['item' => $item, 'error' => $e->getMessage()]);
                 throw $e;
             }
         }
+
+        return $results;
     }
 
     /**
