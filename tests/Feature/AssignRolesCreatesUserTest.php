@@ -61,8 +61,8 @@ class AssignRolesCreatesUserTest extends TestCase
         ])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.0.pfno', '998877')
-            ->assertJsonPath('data.0.created', true);
+            ->assertJsonPath('message', 'Roles assigned successfully')
+            ->assertJsonPath('data', []);
 
         $this->assertSame(1, User::withoutTenant()->where('user_id', '998877')->count());
     }
@@ -90,8 +90,8 @@ class AssignRolesCreatesUserTest extends TestCase
         ])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.0.pfno', '112233')
-            ->assertJsonPath('data.0.created', false);
+            ->assertJsonPath('message', 'Roles assigned successfully')
+            ->assertJsonPath('data', []);
 
         $this->assertSame(1, User::withoutTenant()->where('user_id', '112233')->count());
     }

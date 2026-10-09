@@ -116,13 +116,8 @@ class IctmsAccessController
             return $this->error('Payload is required', 400);
         }
         try {
-            $data = $this->service->assignRolesToUser($payload);
-            $created = collect($data)->contains(fn ($row) => !empty($row['created']));
-            $message = $created
-                ? 'User created and roles assigned successfully'
-                : 'Roles assigned successfully';
-
-            return $this->success($data, $message);
+            $this->service->assignRolesToUser($payload);
+            return $this->success([], 'Roles assigned successfully');
         } catch (\Throwable $e) {
             return $this->error($e->getMessage(), 422);
         }
