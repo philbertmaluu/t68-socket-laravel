@@ -32,7 +32,7 @@ class DeviceService
 
     public function findAll(array $filters = []): Collection
     {
-        return $this->repository->findAll($this->scopeFiltersByHrpOffice($filters));
+        return $this->repository->findAll($this->scopeDeviceListFilters($filters));
     }
 
     public function findBySerialNumber(string $serialNumber): ?Device
@@ -113,7 +113,7 @@ class DeviceService
 
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
-        return $this->repository->paginate($perPage, $page, $this->scopeFiltersByHrpOffice($filters));
+        return $this->repository->paginate($perPage, $page, $this->scopeDeviceListFilters($filters));
     }
 
     /**

@@ -93,6 +93,56 @@ trait UserOfficeTrait
         return $filters;
     }
 
+    protected function currentUserIsQueueAdministrator(): bool
+    {
+        $user = Auth::user();
+        if (!$user instanceof User) {
+            return false;
+        }
+
+        return $user->activeUserRoles()
+            ->where('start_date', '<=', now())
+            ->where(function ($query) {
+                $query->whereNull('end_date')
+                    ->orWhere('end_date', '>=', now());
+            })
+            ->whereHas('role', function ($query) {
+                $query->where('role_code', 'QA');
+            })
+            ->exists();
+    }
+
+    /**
+     * Administrators see all devices unless office_id is requested.
+     * Other roles stay locked to their HRPD office.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<string, mixed>
+     */
+    protected function scopeDeviceListFilters(array $filters): array
+    {
+        $officeId = isset($filters['office_id']) ? trim((string) $filters['office_id']) : '';
+        $regionId = isset($filters['region_id']) ? trim((string) $filters['region_id']) : '';
+
+        if ($officeId === '') {
+            unset($filters['office_id']);
+        } else {
+            $filters['office_id'] = $officeId;
+        }
+
+        if ($regionId === '') {
+            unset($filters['region_id']);
+        } else {
+            $filters['region_id'] = $regionId;
+        }
+
+        if ($this->currentUserIsQueueAdministrator()) {
+            return $filters;
+        }
+
+        return $this->scopeFiltersByHrpOffice($filters);
+    }
+
     /**
      * Resolve office_id => office_name from HRPD for a set of office IDs.
      *
