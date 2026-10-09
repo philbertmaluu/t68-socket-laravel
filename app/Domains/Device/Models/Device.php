@@ -15,8 +15,8 @@ class Device extends Model
 {
     use HasFactory, HasTenant, SoftDeletes, Auditable;
 
-    public $incrementing = false;
-    protected $keyType = 'string';
+    public $incrementing = true;
+    protected $keyType = 'int';
 
     protected $fillable = [
         'id',

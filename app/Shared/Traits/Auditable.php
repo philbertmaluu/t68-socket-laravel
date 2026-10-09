@@ -88,6 +88,11 @@ trait Auditable
     protected static function audit(string $event, Model $model): void
     {
         try {
+            $key = $model->getKey();
+            if ($key === null || $key === '') {
+                return;
+            }
+
             $user = Auth::user();
             $oldValues = $event === 'updated' ? $model->getOriginal() : null;
             $newValues = in_array($event, ['created', 'updated', 'restored']) ? $model->getAttributes() : null;
@@ -95,7 +100,7 @@ trait Auditable
             AuditTrail::create([
                 'tenant_id' => self::getTenantId($model),
                 'auditable_type' => get_class($model),
-                'auditable_id' => $model->getKey(),
+                'auditable_id' => $key,
                 'event' => $event,
                 'user_id' => $user?->id ?? null,
                 'user_type' => $user ? get_class($user) : null,
@@ -106,11 +111,15 @@ trait Auditable
                 'user_agent' => Request::userAgent(),
             ]);
         } catch (\Exception $e) {
-            Log::error('Failed to create audit trail', [
-                'error' => $e->getMessage(),
-                'model' => get_class($model),
-                'event' => $event,
-            ]);
+            try {
+                Log::error('Failed to create audit trail', [
+                    'error' => $e->getMessage(),
+                    'model' => get_class($model),
+                    'event' => $event,
+                ]);
+            } catch (\Throwable) {
+                // Logging must not roll back the business write (e.g. unwritable storage/logs).
+            }
         }
     }
 
