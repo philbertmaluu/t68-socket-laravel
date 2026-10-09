@@ -119,7 +119,7 @@ class TicketController extends BaseController
      * - office_id: Office ID
      * 
      * Automatically generated:
-     * - ticket_number: Auto-generated (e.g. A1–Z500, then AA1–ZZ500, then AAA1…; digits 1–500 per letter block)
+     * - ticket_number: Per office per Tanzania business day (A1 each morning; A1–Z500 then AA1…)
      * - queue_id: Found or created based on service_type_id and office_id
      * - service_type: Retrieved from service name
      * - service_id: Set from service_type_id

@@ -61,15 +61,27 @@ class TicketRepository
         return $query->orderBy('created_at', 'desc')->get();
     }
 
-    public function findByTicketNumber(string $ticketNumber, ?string $tenantId = null): ?Ticket
-    {
+    public function findByTicketNumber(
+        string $ticketNumber,
+        ?string $tenantId = null,
+        ?string $officeId = null,
+        ?string $issuedOn = null,
+    ): ?Ticket {
         $query = Ticket::query()->where('ticket_number', $ticketNumber);
-        
+
         if ($tenantId) {
             $query->where('tenant_id', $tenantId);
         }
-        
-        return $query->first();
+
+        if ($officeId) {
+            $query->where('office_id', $officeId);
+        }
+
+        if ($issuedOn) {
+            $query->whereDate('issued_on', $issuedOn);
+        }
+
+        return $query->orderByDesc('created_at')->first();
     }
 
     /**

@@ -31,12 +31,14 @@ class TicketService
     private TicketRepository $repository;
     private ServiceService $serviceService;
     private CounterService $counterService;
+    private TicketNumberAllocator $ticketNumberAllocator;
 
     public function __construct()
     {
         $this->repository = new TicketRepository();
         $this->serviceService = new ServiceService();
         $this->counterService = new CounterService();
+        $this->ticketNumberAllocator = new TicketNumberAllocator();
     }
 
     public function findById(int|string $id, bool $withTrashed = false): ?Ticket
@@ -49,9 +51,13 @@ class TicketService
         return $this->repository->findAll($filters);
     }
 
-    public function findByTicketNumber(string $ticketNumber, ?string $tenantId = null): ?Ticket
-    {
-        return $this->repository->findByTicketNumber($ticketNumber, $tenantId);
+    public function findByTicketNumber(
+        string $ticketNumber,
+        ?string $tenantId = null,
+        ?string $officeId = null,
+        ?string $issuedOn = null,
+    ): ?Ticket {
+        return $this->repository->findByTicketNumber($ticketNumber, $tenantId, $officeId, $issuedOn);
     }
 
     /**
@@ -63,7 +69,7 @@ class TicketService
      * - office_id: Office ID
      * 
      * Automatically generated:
-     * - ticket_number: Auto-generated unique ticket number
+     * - ticket_number: Per-office daily sequence (A1 each Tanzania business day)
      * - queue_id: Found or created based on service_type_id and office_id
      * - service_type: Retrieved from service name
      * - service_id: Set from service_type_id
@@ -110,13 +116,17 @@ class TicketService
             // Then find or create queue for that counter
             $queueId = $this->findOrCreateQueueForService($data['service_type_id'], $data['office_id']);
 
-            // Generate ticket number
-            $ticketNumber = $this->generateTicketNumber($data['office_id']);
+            $tenantId = (int) ($service->tenant_id ?: 1);
+            $allocation = $this->ticketNumberAllocator->allocate(
+                (string) $data['office_id'],
+                $tenantId
+            );
 
             // Prepare ticket data
             // Note: tenant_id is automatically set by HasTenant trait if available
             $ticketData = [
-                'ticket_number' => $ticketNumber,
+                'ticket_number' => $allocation['ticket_number'],
+                'issued_on' => $allocation['issued_on'],
                 'service_type' => $service->name,
                 'service_id' => $data['service_type_id'],
                 'queue_id' => $queueId,
@@ -130,12 +140,8 @@ class TicketService
                     $data['created_by'] ?? null,
                     (string) $data['office_id']
                 ),
+                'tenant_id' => $tenantId,
             ];
-
-            // Set tenant_id if available from service
-            if ($service->tenant_id) {
-                $ticketData['tenant_id'] = $service->tenant_id;
-            }
 
             // Create ticket
             return $this->repository->create($ticketData);
@@ -216,38 +222,6 @@ class TicketService
             'office_id' => $officeId,
         ]);
     }
-
-    /** @var int Max numeric suffix per letter block (matches voice assets A–Z and 1–500). */
-    private const TICKET_NUM_MAX = 500;
-
-    /**
-     * Generate a unique ticket number.
-     *
-     * Format: one or more letters [A–Z] + digits 1–500 (unpadded), e.g. A1, A500, Z500, AA1, ZZ500, AAA1, …
-     * Sequence: A1…A500, B1…B500, …, Z500, then AA1…AA500, …, ZZ500, then AAA1, … (unbounded prefix length).
-     *
-     * String sorting does not match sequence order, so the greatest ticket is found by parsing all numbers.
-     * At very high volume consider a dedicated sequence column to avoid scanning ticket_number.
-     *
-     * @param string $officeId (reserved for future per-office sequences)
-     */
-    private function generateTicketNumber(string $officeId): string
-    {
-        $max = $this->findGreatestTicketNumber();
-
-        if ($max === null) {
-            return 'A1';
-        }
-
-        $parsed = $this->parseTicketNumber($max);
-        if ($parsed === null) {
-            return $this->findNextAvailableTicketNumber();
-        }
-
-        return $this->incrementTicketNumber($parsed['prefix'], $parsed['num']);
-    }
-
-
 
     public function callNextTicket(): array
     {
@@ -1277,122 +1251,6 @@ class TicketService
         } catch (\Throwable) {
             return null;
         }
-    }
-
-    /**
-     * @return array{prefix: string, num: int}|null
-     */
-    private function parseTicketNumber(string $ticketNumber): ?array
-    {
-        if (!preg_match('/^([A-Z]+)(\d+)$/', $ticketNumber, $m)) {
-            return null;
-        }
-
-        $num = (int) $m[2];
-        if ($num < 1 || $num > self::TICKET_NUM_MAX) {
-            return null;
-        }
-
-        return ['prefix' => $m[1], 'num' => $num];
-    }
-
-    /**
-     * Order: A…Z (len 1), then AA…ZZ (len 2), then AAA…, comparing length then lexicographically.
-     *
-     * @return int -1 if a < b, 0 if equal, 1 if a > b
-     */
-    private function compareTicketSequence(string $prefixA, int $numA, string $prefixB, int $numB): int
-    {
-        $lenA = strlen($prefixA);
-        $lenB = strlen($prefixB);
-        if ($lenA !== $lenB) {
-            return $lenA <=> $lenB;
-        }
-
-        $cmp = strcmp($prefixA, $prefixB);
-        if ($cmp !== 0) {
-            return $cmp <=> 0;
-        }
-
-        return $numA <=> $numB;
-    }
-
-    private function findGreatestTicketNumber(): ?string
-    {
-        $best = null;
-        /** @var string|null $bestPrefix */
-        $bestPrefix = null;
-        $bestNum = 0;
-
-        foreach (Ticket::pluck('ticket_number') as $tn) {
-            $parsed = $this->parseTicketNumber($tn);
-            if ($parsed === null) {
-                continue;
-            }
-
-            if ($best === null
-                || $this->compareTicketSequence($parsed['prefix'], $parsed['num'], $bestPrefix, $bestNum) > 0) {
-                $best = $tn;
-                $bestPrefix = $parsed['prefix'];
-                $bestNum = $parsed['num'];
-            }
-        }
-
-        return $best;
-    }
-
-    private function incrementTicketNumber(string $prefix, int $num): string
-    {
-        if ($num < self::TICKET_NUM_MAX) {
-            return $prefix . (string) ($num + 1);
-        }
-
-        $nextPrefix = $this->nextPrefixInSequence($prefix);
-
-        return $nextPrefix . '1';
-    }
-
-    /**
-     * Next prefix after A, B, …, Z, AA, AB, …, AZ, BA, …, ZZ, AAA, …
-     */
-    private function nextPrefixInSequence(string $prefix): string
-    {
-        $len = strlen($prefix);
-        $chars = str_split($prefix);
-
-        for ($i = $len - 1; $i >= 0; $i--) {
-            if ($chars[$i] < 'Z') {
-                $chars[$i] = chr(ord($chars[$i]) + 1);
-                for ($j = $i + 1; $j < $len; $j++) {
-                    $chars[$j] = 'A';
-                }
-
-                return implode('', $chars);
-            }
-        }
-
-        return str_repeat('A', $len + 1);
-    }
-
-    /**
-     * When the numeric sequence is exhausted, find the smallest ticket not present (prefix order, then 1–500).
-     */
-    private function findNextAvailableTicketNumber(): string
-    {
-        $existing = array_flip(Ticket::pluck('ticket_number')->all());
-        $prefix = 'A';
-
-        for ($guard = 0; $guard < 100000; $guard++) {
-            for ($num = 1; $num <= self::TICKET_NUM_MAX; $num++) {
-                $candidate = $prefix . $num;
-                if (!isset($existing[$candidate])) {
-                    return $candidate;
-                }
-            }
-            $prefix = $this->nextPrefixInSequence($prefix);
-        }
-
-        return 'A1';
     }
 
     public function updateTicket(Ticket $ticket, array $data): Ticket
