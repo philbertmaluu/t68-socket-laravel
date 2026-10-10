@@ -103,6 +103,40 @@ class TicketAnnounceService
     }
 
     /**
+     * Push a recall onto the office TV queue.
+     *
+     * "current" repeats the clerk's live ticket (called / serving / paused).
+     * "previous" announces the last ticket they skipped, marked no-show, or completed.
+     * If the office is already announcing, the recall waits in line like Call Next.
+     *
+     * @return array{status: string, message?: string, pending_id?: string, ticket?: array, announce_id?: string, recall_mode: string}
+     */
+    public function recall(string $mode): array
+    {
+        $mode = strtolower(trim($mode));
+        if (!in_array($mode, ['current', 'previous'], true)) {
+            throw new UnprocessableEntityHttpException('Recall mode must be current or previous');
+        }
+
+        $payload = $mode === 'current'
+            ? $this->ticketService->getActiveClerkTicket()
+            : $this->ticketService->getPreviousClerkTicket();
+
+        if (!$payload) {
+            throw new NotFoundHttpException(
+                $mode === 'current'
+                    ? 'No current ticket to recall'
+                    : 'No previous ticket to call'
+            );
+        }
+
+        $result = $this->requestAnnounceForClaimedTicket($payload);
+        $result['recall_mode'] = $mode;
+
+        return $result;
+    }
+
+    /**
      * Announce a ticket already claimed (accept transfer / resume hold).
      *
      * @param array<string, mixed> $ticketPayload

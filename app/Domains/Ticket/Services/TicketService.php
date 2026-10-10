@@ -363,6 +363,54 @@ class TicketService
     }
 
     /**
+     * Last ticket this officer finished in this office, excluding the live one.
+     *
+     * Used by Recall: "Call previous ticket". Looks at skipped, no-show,
+     * completed, and cancelled rows for this clerk's identity (id / PFNO / user_id).
+     */
+    public function getPreviousClerkTicket(): ?array
+    {
+        $user = Auth::guard('sanctum')->user();
+        if (!$user || !isset($user->id)) {
+            throw new AuthenticationException('User not authenticated');
+        }
+
+        $location = $this->getUserOfficeAndRegionFromHrp();
+        $officeId = (string) $location['office_id'];
+        $clerkIds = $this->resolveClerkIdentityCandidates($user);
+
+        $ticket = $this->findPreviousTicketForClerk($clerkIds, $officeId);
+        if (!$ticket) {
+            return null;
+        }
+
+        $counter = null;
+        if ($ticket->counter_id) {
+            $counter = Counter::query()
+                ->with('counterType')
+                ->where('office_id', $officeId)
+                ->find($ticket->counter_id);
+        }
+
+        if (!$counter) {
+            $counterAssignment = CounterClerk::query()
+                ->whereIn('clerk_id', $clerkIds)
+                ->where('is_active', true)
+                ->latest('assigned_at')
+                ->first();
+
+            if ($counterAssignment) {
+                $counter = Counter::query()
+                    ->with('counterType')
+                    ->where('office_id', $officeId)
+                    ->find($counterAssignment->counter_id);
+            }
+        }
+
+        return $this->formatClerkTicketPayload($ticket, $counter);
+    }
+
+    /**
      * Lightweight attention list: transferred-to-me + further-notice holds.
      *
      * @return list<array<string, mixed>>
@@ -853,6 +901,28 @@ class TicketService
             ->where('office_id', $officeId)
             ->whereIn('status', ['called', 'serving', 'paused'])
             ->orderByDesc('called_at')
+            ->orderByDesc('updated_at')
+            ->first();
+    }
+
+    /**
+     * Newest finished ticket for this clerk that is not their current called/serving/paused ticket.
+     *
+     * @param  list<string>  $clerkIds
+     */
+    {
+        if ($clerkIds === [] || $officeId === '') {
+            return null;
+        }
+
+        $active = $this->findActiveTicketForClerk($clerkIds, $officeId);
+
+        return Ticket::query()
+            ->whereIn('clerk_id', $clerkIds)
+            ->where('office_id', $officeId)
+            ->whereIn('status', ['skipped', 'no_show', 'completed', 'cancelled'])
+            ->when($active, fn ($query) => $query->where('id', '!=', $active->id))
+            ->orderByDesc('completed_at')
             ->orderByDesc('updated_at')
             ->first();
     }

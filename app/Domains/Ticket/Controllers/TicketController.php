@@ -258,6 +258,70 @@ class TicketController extends BaseController
         }
     }
 
+    /**
+     * Replay a ticket announcement on the office TV.
+     *
+     * Body: { "mode": "current" | "previous" }
+     * - current: the clerk's active ticket (customer did not hear / has not come).
+     * - previous: the last ticket this clerk finished before the active one.
+     *
+     * Returns 202 when the office TV is already announcing someone else (queued).
+     */
+    public function recall(Request $request): JsonResponse
+    {
+        try {
+            $announceService = new TicketAnnounceService($this->service);
+            $result = $announceService->recall((string) $request->input('mode', ''));
+
+            if (($result['status'] ?? '') === 'queued') {
+                return $this->sendResponse($result, $result['message'] ?? 'Recall queued', [], 202);
+            }
+
+            $ticket = $result['ticket'] ?? $result;
+            return $this->sendResponse(
+                array_merge(is_array($ticket) ? $ticket : [], [
+                    'call_status' => 'called',
+                    'recall_mode' => $result['recall_mode'] ?? $request->input('mode'),
+                    'announce_id' => $result['announce_id'] ?? null,
+                ]),
+                ($result['recall_mode'] ?? '') === 'previous'
+                    ? 'Previous ticket called successfully'
+                    : 'Current ticket recalled successfully'
+            );
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to recall ticket', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Look up the clerk's last finished ticket so the Recall modal can label
+     * the "Call previous" option (or disable it when there is none).
+     */
+    public function previousTicket(): JsonResponse
+    {
+        try {
+            $ticket = $this->service->getPreviousClerkTicket();
+            return $this->sendResponse(
+                $ticket,
+                $ticket ? 'Previous ticket retrieved successfully' : 'No previous ticket'
+            );
+        } catch (AuthenticationException $e) {
+            return $this->sendError($e->getMessage(), [], 401);
+        } catch (NotFoundHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 404);
+        } catch (UnprocessableEntityHttpException $e) {
+            return $this->sendError($e->getMessage(), [], 422);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve previous ticket', ['error' => $e->getMessage()], 500);
+        }
+    }
+
     public function pendingAnnounce(Request $request): JsonResponse
     {
         try {
