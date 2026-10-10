@@ -7,6 +7,7 @@ use App\Events\TicketCompleted;
 use App\Events\TicketCreated;
 use App\Events\TicketServing;
 use App\Events\TicketStatusChanged;
+use App\Events\TicketTransferAccepted;
 use App\Jobs\QueueTicket;
 use App\Shared\Traits\Auditable;
 use App\Shared\Traits\HasTenant;
@@ -184,13 +185,15 @@ class Ticket extends Model
              * When ticket status changes, fire specific events:
              * - TicketCompleted: Triggers SendTicketCompletedSms listener (sends SMS with feedback link)
              * - TicketCalled: Triggers BroadcastTicketCalled + SendTicketCalledSms listeners
+             * - TicketTransferAccepted: Triggers SendTicketTransferAcceptedSms
              * - TicketServing: Triggers BroadcastTicketServing listener
              */
             if ($oldStatus !== $newStatus) {
-                match ($newStatus) {
-                    'called' => event(new TicketCalled($ticket)),
-                    'serving' => event(new TicketServing($ticket)),
-                    'completed' => event(new TicketCompleted($ticket)), // Triggers SendTicketCompletedSms
+                match (true) {
+                    $newStatus === 'called' && $oldStatus === 'transferred' => event(new TicketTransferAccepted($ticket)),
+                    $newStatus === 'called' => event(new TicketCalled($ticket)),
+                    $newStatus === 'serving' => event(new TicketServing($ticket)),
+                    $newStatus === 'completed' => event(new TicketCompleted($ticket)),
                     default => null,
                 };
             }

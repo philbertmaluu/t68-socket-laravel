@@ -32,6 +32,11 @@ class NotificationTemplateEnSeeder extends Seeder
                 'description' => 'SMS sent when a ticket is called or recalled (English).',
             ],
             [
+                'key' => 'ticket_transfer_accepted_sms',
+                'body' => 'Dear Customer, your ticket has been transferred. Please proceed to {counterTypeName} number {counterName} to receive service.',
+                'description' => 'SMS sent when a transferred ticket is accepted (English).',
+            ],
+            [
                 'key' => 'thank_you_visit_sms',
                 'body' => "Thank you for visiting our NSSF offices.\nWe appreciate your time and cooperation.",
                 'description' => 'Generic thank you for visit SMS (English).',

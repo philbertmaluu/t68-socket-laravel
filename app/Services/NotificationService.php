@@ -287,9 +287,7 @@ class NotificationService
             ];
         }
 
-        $ticket->loadMissing(['counter.counterType']);
-        $counterTypeName = $ticket->counter?->counterType?->name ?: 'dirisha';
-        $counterName = $ticket->counter?->name ?: ($ticket->counter_id ? (string) $ticket->counter_id : '');
+        $placeholders = $this->counterPlaceholders($ticket);
 
         $template = $this->notificationTemplateService->findActiveByKeyAndLocale(
             'ticket_called_sms',
@@ -299,11 +297,8 @@ class NotificationService
         );
 
         $message = $template
-            ? $this->renderTemplate($template->body, [
-                'counterTypeName' => $counterTypeName,
-                'counterName' => $counterName,
-            ])
-            : "Ndugu Mteja tiketi yako imeitwa tafadhali elekea {$counterTypeName} nambari {$counterName} ili kupokea huduma";
+            ? $this->renderTemplate($template->body, $placeholders)
+            : "Ndugu Mteja tiketi yako imeitwa tafadhali elekea {$placeholders['counterTypeName']} nambari {$placeholders['counterName']} ili kupokea huduma";
 
         return $this->sendSms(
             recipient: $ticket->phone_number,
@@ -311,6 +306,58 @@ class NotificationService
             process: 'TICKET CALLED',
             expiryHours: 4
         );
+    }
+
+    /**
+     * SMS when a transferred ticket is accepted at the destination counter.
+     *
+     * @return array{success: bool, message: string, data: array|null}
+     */
+    public function sendTicketTransferAcceptedNotification(Ticket $ticket): array
+    {
+        if (empty($ticket->phone_number)) {
+            Log::info('Skipping SMS notification: No phone number for ticket', [
+                'ticket_number' => $ticket->ticket_number,
+            ]);
+            return [
+                'success' => false,
+                'message' => 'No phone number available',
+                'data' => null,
+            ];
+        }
+
+        $placeholders = $this->counterPlaceholders($ticket);
+
+        $template = $this->notificationTemplateService->findActiveByKeyAndLocale(
+            'ticket_transfer_accepted_sms',
+            'sw',
+            'sms',
+            $ticket->tenant_id
+        );
+
+        $message = $template
+            ? $this->renderTemplate($template->body, $placeholders)
+            : "Ndugu Mteja tiketi yako imeahamishwa tafadhali elekea {$placeholders['counterTypeName']} nambari {$placeholders['counterName']} ili kupokea huduma";
+
+        return $this->sendSms(
+            recipient: $ticket->phone_number,
+            message: $message,
+            process: 'TICKET TRANSFER ACCEPTED',
+            expiryHours: 4
+        );
+    }
+
+    /**
+     * @return array{counterTypeName: string, counterName: string}
+     */
+    private function counterPlaceholders(Ticket $ticket): array
+    {
+        $ticket->loadMissing(['counter.counterType']);
+
+        return [
+            'counterTypeName' => $ticket->counter?->counterType?->name ?: 'dirisha',
+            'counterName' => $ticket->counter?->name ?: ($ticket->counter_id ? (string) $ticket->counter_id : ''),
+        ];
     }
 
     /**

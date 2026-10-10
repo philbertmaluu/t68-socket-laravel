@@ -14,6 +14,7 @@ use App\Domains\Queue\Models\Queue;
 use App\Domains\Ticket\Models\Ticket;
 use App\Domains\Ticket\Repositories\TicketRepository;
 use App\Events\TicketCalled;
+use App\Events\TicketTransferAccepted;
 use App\Shared\Helpers\TransactionHelper;
 use App\Traits\UserOfficeTrait;
 use Illuminate\Auth\AuthenticationException;
@@ -588,7 +589,7 @@ class TicketService
      */
     public function resumeAttentionTicket(string $ticketId): array
     {
-        $payload = TransactionHelper::execute(function () use ($ticketId) {
+        $result = TransactionHelper::execute(function () use ($ticketId) {
             $user = Auth::guard('sanctum')->user();
             if (!$user || !isset($user->id)) {
                 throw new AuthenticationException('User not authenticated');
@@ -640,6 +641,7 @@ class TicketService
             }
 
             $queue = $this->findOrCreateQueueForCounter($counter, $officeId);
+            $fromStatus = (string) $ticket->status;
 
             $ticket->update([
                 'status' => 'called',
@@ -649,12 +651,15 @@ class TicketService
                 'called_at' => now(),
             ]);
 
-            return $this->formatClerkTicketPayload($ticket->fresh(), $counter);
+            return [
+                'payload' => $this->formatClerkTicketPayload($ticket->fresh(), $counter),
+                'from_status' => $fromStatus,
+            ];
         });
 
-        $this->dispatchTicketCalledFromPayload($payload);
+        $this->dispatchResumeNotification($result['payload'], $result['from_status']);
 
-        return $payload;
+        return $result['payload'];
     }
 
     /** @deprecated Use resumeAttentionTicket */
@@ -1422,7 +1427,7 @@ class TicketService
     /**
      * @param array<string, mixed> $payload
      */
-    private function dispatchTicketCalledFromPayload(array $payload): void
+    private function dispatchResumeNotification(array $payload, string $fromStatus): void
     {
         $ticketId = $payload['id'] ?? null;
         if (!$ticketId) {
@@ -1430,8 +1435,15 @@ class TicketService
         }
 
         $ticket = Ticket::query()->find($ticketId);
-        if ($ticket) {
-            event(new TicketCalled($ticket));
+        if (!$ticket) {
+            return;
         }
+
+        if ($fromStatus === 'transferred') {
+            event(new TicketTransferAccepted($ticket));
+            return;
+        }
+
+        event(new TicketCalled($ticket));
     }
 }
