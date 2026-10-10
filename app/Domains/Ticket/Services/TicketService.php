@@ -954,9 +954,10 @@ class TicketService
             $location = $this->getUserOfficeAndRegionFromHrp();
             $officeId = (string) $location['office_id'];
             $officeName = $location['office_name'] ?? null;
+            $clerkIds = $this->resolveClerkIdentityCandidates($user);
 
             $counterAssignment = CounterClerk::query()
-                ->where('clerk_id', (string) $user->id)
+                ->whereIn('clerk_id', $clerkIds)
                 ->where('is_active', true)
                 ->latest('assigned_at')
                 ->first();
@@ -978,24 +979,26 @@ class TicketService
                 : ($counterAssignment->queue_id ? (string) $counterAssignment->queue_id : null);
 
             $ticketsQuery = Ticket::query()->where('office_id', $officeId);
+            $officerHandledQuery = Ticket::query()
+                ->where('office_id', $officeId)
+                ->whereIn('clerk_id', $clerkIds)
+                ->where('status', '!=', 'waiting');
 
             if ($scope === 'waiting') {
                 $ticketsQuery = $this->waitingTicketsEligibleForCounter($officeId, $counterId);
             } elseif ($scope === 'history') {
-                $ticketsQuery
-                    ->where('status', '!=', 'waiting')
-                    ->where('clerk_id', $clerkId);
+                $ticketsQuery = (clone $officerHandledQuery);
             } else {
                 $eligibleWaiting = $this->waitingTicketsEligibleForCounter($officeId, $counterId);
-                $ticketsQuery->where(function ($query) use ($clerkId, $eligibleWaiting) {
+                $ticketsQuery->where(function ($query) use ($clerkIds, $eligibleWaiting) {
                     $query
                         ->where(function ($waitingQuery) use ($eligibleWaiting) {
                             $waitingQuery->whereIn('id', $eligibleWaiting->select('id'));
                         })
-                        ->orWhere(function ($historyQuery) use ($clerkId) {
+                        ->orWhere(function ($historyQuery) use ($clerkIds) {
                             $historyQuery
                                 ->where('status', '!=', 'waiting')
-                                ->where('clerk_id', $clerkId);
+                                ->whereIn('clerk_id', $clerkIds);
                         });
                 });
             }
@@ -1006,10 +1009,12 @@ class TicketService
 
             if (!empty($filters['date_from'])) {
                 $ticketsQuery->whereDate('created_at', '>=', $filters['date_from']);
+                $officerHandledQuery->whereDate('created_at', '>=', $filters['date_from']);
             }
 
             if (!empty($filters['date_to'])) {
                 $ticketsQuery->whereDate('created_at', '<=', $filters['date_to']);
+                $officerHandledQuery->whereDate('created_at', '<=', $filters['date_to']);
             }
 
             if (!empty($filters['search'])) {
@@ -1046,20 +1051,26 @@ class TicketService
                 $ticket->setAttribute('office_name', $officeName);
             });
 
-            $statusCounts = (clone $ticketsQuery)
+            $officerWaitingCount = (int) $this->waitingTicketsEligibleForCounter($officeId, $counterId)->count();
+            $officerHandledCount = (int) (clone $officerHandledQuery)->count();
+
+            $statusCounts = (clone $officerHandledQuery)
                 ->selectRaw('LOWER(status) as status, COUNT(*) as total')
                 ->groupBy('status')
                 ->pluck('total', 'status');
 
-            $totalDurationSeconds = (int) ((clone $ticketsQuery)->sum('duration_seconds') ?? 0);
+            $totalDurationSeconds = (int) ((clone $officerHandledQuery)->sum('duration_seconds') ?? 0);
             $avgDurationSeconds = (int) round(
-                (clone $ticketsQuery)
+                (clone $officerHandledQuery)
                     ->whereNotNull('duration_seconds')
                     ->where('duration_seconds', '>', 0)
                     ->avg('duration_seconds') ?? 0
             );
 
-            $officerWaitingCount = (int) $this->waitingTicketsEligibleForCounter($officeId, $counterId)->count();
+            $statusBreakdown = $statusCounts
+                ->mapWithKeys(fn ($count, $status) => [strtolower((string) $status) => (int) $count])
+                ->toArray();
+            $statusBreakdown['waiting'] = $officerWaitingCount;
 
             return [
                 'tickets' => $tickets,
@@ -1070,7 +1081,7 @@ class TicketService
                     'queue_id' => $queueId,
                     'counter_id' => $counterId,
                     'clerk_id' => $clerkId,
-                    'total_tickets' => (int) ((clone $ticketsQuery)->count()),
+                    'total_tickets' => $officerWaitingCount + $officerHandledCount,
                     'total_waiting_tickets' => $officerWaitingCount,
                     'total_called_tickets' => (int) ($statusCounts['called'] ?? 0),
                     'total_serving_tickets' => (int) ($statusCounts['serving'] ?? 0),
@@ -1084,9 +1095,7 @@ class TicketService
                     'total_cancelled_tickets' => (int) ($statusCounts['cancelled'] ?? 0),
                     'total_duration_seconds' => $totalDurationSeconds,
                     'avg_duration_seconds' => $avgDurationSeconds,
-                    'status_breakdown' => $statusCounts
-                        ->mapWithKeys(fn ($count, $status) => [strtolower((string) $status) => (int) $count])
-                        ->toArray(),
+                    'status_breakdown' => $statusBreakdown,
                 ],
             ];
         });
