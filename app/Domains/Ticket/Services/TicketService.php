@@ -1059,6 +1059,8 @@ class TicketService
                     ->avg('duration_seconds') ?? 0
             );
 
+            $officerWaitingCount = (int) $this->waitingTicketsEligibleForCounter($officeId, $counterId)->count();
+
             return [
                 'tickets' => $tickets,
                 'summary' => [
@@ -1069,7 +1071,7 @@ class TicketService
                     'counter_id' => $counterId,
                     'clerk_id' => $clerkId,
                     'total_tickets' => (int) ((clone $ticketsQuery)->count()),
-                    'total_waiting_tickets' => (int) ($statusCounts['waiting'] ?? 0),
+                    'total_waiting_tickets' => $officerWaitingCount,
                     'total_called_tickets' => (int) ($statusCounts['called'] ?? 0),
                     'total_serving_tickets' => (int) ($statusCounts['serving'] ?? 0),
                     'total_completed_tickets' => (int) ($statusCounts['completed'] ?? 0),
