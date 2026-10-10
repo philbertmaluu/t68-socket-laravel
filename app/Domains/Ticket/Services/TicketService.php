@@ -20,6 +20,7 @@ use App\Traits\UserOfficeTrait;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -1086,17 +1087,25 @@ class TicketService
             }
 
             if (!empty($filters['status']) && $filters['status'] !== 'all') {
-                $ticketsQuery->where('status', strtolower((string) $filters['status']));
+                $status = strtolower((string) $filters['status']);
+                $ticketsQuery->whereRaw('LOWER(status) = ?', [$status]);
+                $officerHandledQuery->whereRaw('LOWER(status) = ?', [$status]);
             }
 
-            if (!empty($filters['date_from'])) {
-                $ticketsQuery->whereDate('created_at', '>=', $filters['date_from']);
-                $officerHandledQuery->whereDate('created_at', '>=', $filters['date_from']);
+            $periodBounds = $this->resolveClerkTicketPeriodBounds(
+                isset($filters['period']) ? (string) $filters['period'] : null
+            );
+            $dateFrom = $filters['date_from'] ?? ($periodBounds['from'] ?? null);
+            $dateTo = $filters['date_to'] ?? ($periodBounds['to'] ?? null);
+
+            if (!empty($dateFrom)) {
+                $this->applyClerkTicketDateFrom($ticketsQuery, $dateFrom);
+                $this->applyClerkTicketDateFrom($officerHandledQuery, $dateFrom);
             }
 
-            if (!empty($filters['date_to'])) {
-                $ticketsQuery->whereDate('created_at', '<=', $filters['date_to']);
-                $officerHandledQuery->whereDate('created_at', '<=', $filters['date_to']);
+            if (!empty($dateTo)) {
+                $this->applyClerkTicketDateTo($ticketsQuery, $dateTo);
+                $this->applyClerkTicketDateTo($officerHandledQuery, $dateTo);
             }
 
             if (!empty($filters['search'])) {
@@ -1133,7 +1142,13 @@ class TicketService
                 $ticket->setAttribute('office_name', $officeName);
             });
 
-            $officerWaitingCount = (int) $this->waitingTicketsEligibleForCounter($officeId, $counterId)->count();
+            $statusFilter = !empty($filters['status']) && $filters['status'] !== 'all'
+                ? strtolower((string) $filters['status'])
+                : null;
+
+            $officerWaitingCount = $statusFilter && $statusFilter !== 'waiting'
+                ? 0
+                : (int) $this->waitingTicketsEligibleForCounter($officeId, $counterId)->count();
             $officerHandledCount = (int) (clone $officerHandledQuery)->count();
 
             $statusCounts = (clone $officerHandledQuery)
@@ -1422,6 +1437,82 @@ class TicketService
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
         return $this->repository->paginate($perPage, $page, $filters);
+    }
+
+    /**
+     * @return array{from: Carbon, to: Carbon}|null
+     */
+    private function resolveClerkTicketPeriodBounds(?string $period): ?array
+    {
+        $period = strtolower(trim((string) $period));
+        if ($period === '' || $period === 'all') {
+            return null;
+        }
+
+        $now = Carbon::now('Africa/Dar_es_Salaam');
+        $from = match ($period) {
+            'daily', 'day' => $now->copy()->startOfDay(),
+            'weekly', 'week' => $now->copy()->startOfWeek(Carbon::MONDAY),
+            'monthly', 'month' => $now->copy()->startOfMonth(),
+            'quarterly', 'quarter' => $now->copy()->startOfQuarter(),
+            'yearly', 'year' => $now->copy()->startOfYear(),
+            default => throw new UnprocessableEntityHttpException(
+                'period must be daily, weekly, monthly, quarterly, or yearly'
+            ),
+        };
+
+        return [
+            'from' => $from->copy()->setTimezone('UTC'),
+            'to' => $now->copy()->endOfDay()->setTimezone('UTC'),
+        ];
+    }
+
+    private function applyClerkTicketDateFrom(Builder $query, mixed $dateFrom): void
+    {
+        $query->where(function (Builder $inner) use ($dateFrom) {
+            if ($dateFrom instanceof Carbon) {
+                $inner
+                    ->where('completed_at', '>=', $dateFrom)
+                    ->orWhere(function (Builder $fallback) use ($dateFrom) {
+                        $fallback
+                            ->whereNull('completed_at')
+                            ->where('created_at', '>=', $dateFrom);
+                    });
+                return;
+            }
+
+            $inner
+                ->whereDate('completed_at', '>=', $dateFrom)
+                ->orWhere(function (Builder $fallback) use ($dateFrom) {
+                    $fallback
+                        ->whereNull('completed_at')
+                        ->whereDate('created_at', '>=', $dateFrom);
+                });
+        });
+    }
+
+    private function applyClerkTicketDateTo(Builder $query, mixed $dateTo): void
+    {
+        $query->where(function (Builder $inner) use ($dateTo) {
+            if ($dateTo instanceof Carbon) {
+                $inner
+                    ->where('completed_at', '<=', $dateTo)
+                    ->orWhere(function (Builder $fallback) use ($dateTo) {
+                        $fallback
+                            ->whereNull('completed_at')
+                            ->where('created_at', '<=', $dateTo);
+                    });
+                return;
+            }
+
+            $inner
+                ->whereDate('completed_at', '<=', $dateTo)
+                ->orWhere(function (Builder $fallback) use ($dateTo) {
+                    $fallback
+                        ->whereNull('completed_at')
+                        ->whereDate('created_at', '<=', $dateTo);
+                });
+        });
     }
 
     /**
