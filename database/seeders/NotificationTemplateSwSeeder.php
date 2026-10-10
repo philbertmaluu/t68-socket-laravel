@@ -27,6 +27,11 @@ class NotificationTemplateSwSeeder extends Seeder
                 'description' => 'SMS sent when a ticket is completed.',
             ],
             [
+                'key' => 'ticket_called_sms',
+                'body' => 'Ndugu Mteja tiketi yako imeitwa tafadhali elekea {counterTypeName} nambari {counterName} ili kupokea huduma',
+                'description' => 'SMS sent when a ticket is called or recalled.',
+            ],
+            [
                 'key' => 'thank_you_visit_sms',
                 'body' => "Asante kwa kutembelea ofisi zetu za NSSF.\nTunathamini muda wako na ushirikiano wako.",
                 'description' => 'Generic thank you for visit SMS.',

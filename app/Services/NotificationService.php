@@ -270,6 +270,50 @@ class NotificationService
     }
 
     /**
+     * SMS when a ticket is called or recalled. Always prefers the Swahili template.
+     *
+     * @return array{success: bool, message: string, data: array|null}
+     */
+    public function sendTicketCalledNotification(Ticket $ticket): array
+    {
+        if (empty($ticket->phone_number)) {
+            Log::info('Skipping SMS notification: No phone number for ticket', [
+                'ticket_number' => $ticket->ticket_number,
+            ]);
+            return [
+                'success' => false,
+                'message' => 'No phone number available',
+                'data' => null,
+            ];
+        }
+
+        $ticket->loadMissing(['counter.counterType']);
+        $counterTypeName = $ticket->counter?->counterType?->name ?: 'dirisha';
+        $counterName = $ticket->counter?->name ?: ($ticket->counter_id ? (string) $ticket->counter_id : '');
+
+        $template = $this->notificationTemplateService->findActiveByKeyAndLocale(
+            'ticket_called_sms',
+            'sw',
+            'sms',
+            $ticket->tenant_id
+        );
+
+        $message = $template
+            ? $this->renderTemplate($template->body, [
+                'counterTypeName' => $counterTypeName,
+                'counterName' => $counterName,
+            ])
+            : "Ndugu Mteja tiketi yako imeitwa tafadhali elekea {$counterTypeName} nambari {$counterName} ili kupokea huduma";
+
+        return $this->sendSms(
+            recipient: $ticket->phone_number,
+            message: $message,
+            process: 'TICKET CALLED',
+            expiryHours: 4
+        );
+    }
+
+    /**
      * Very small helper to replace {placeholders} in template bodies.
      */
     private function renderTemplate(string $body, array $variables): string

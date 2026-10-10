@@ -13,6 +13,7 @@ use App\Domains\Service\Services\ServiceService;
 use App\Domains\Queue\Models\Queue;
 use App\Domains\Ticket\Models\Ticket;
 use App\Domains\Ticket\Repositories\TicketRepository;
+use App\Events\TicketCalled;
 use App\Shared\Helpers\TransactionHelper;
 use App\Traits\UserOfficeTrait;
 use Illuminate\Auth\AuthenticationException;
@@ -587,7 +588,7 @@ class TicketService
      */
     public function resumeAttentionTicket(string $ticketId): array
     {
-        return TransactionHelper::execute(function () use ($ticketId) {
+        $payload = TransactionHelper::execute(function () use ($ticketId) {
             $user = Auth::guard('sanctum')->user();
             if (!$user || !isset($user->id)) {
                 throw new AuthenticationException('User not authenticated');
@@ -650,6 +651,10 @@ class TicketService
 
             return $this->formatClerkTicketPayload($ticket->fresh(), $counter);
         });
+
+        $this->dispatchTicketCalledFromPayload($payload);
+
+        return $payload;
     }
 
     /** @deprecated Use resumeAttentionTicket */
@@ -1412,5 +1417,21 @@ class TicketService
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
         return $this->repository->paginate($perPage, $page, $filters);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function dispatchTicketCalledFromPayload(array $payload): void
+    {
+        $ticketId = $payload['id'] ?? null;
+        if (!$ticketId) {
+            return;
+        }
+
+        $ticket = Ticket::query()->find($ticketId);
+        if ($ticket) {
+            event(new TicketCalled($ticket));
+        }
     }
 }

@@ -130,6 +130,11 @@ class Ticket extends Model
         return $this->belongsTo(\App\Domains\Tenant\Models\Tenant::class, 'tenant_id', 'id');
     }
 
+    public function counter(): BelongsTo
+    {
+        return $this->belongsTo(\App\Domains\Counter\Models\Counter::class, 'counter_id', 'id');
+    }
+
     protected static function boot(): void
     {
         parent::boot();
@@ -178,7 +183,7 @@ class Ticket extends Model
             /**
              * When ticket status changes, fire specific events:
              * - TicketCompleted: Triggers SendTicketCompletedSms listener (sends SMS with feedback link)
-             * - TicketCalled: Triggers BroadcastTicketCalled listener
+             * - TicketCalled: Triggers BroadcastTicketCalled + SendTicketCalledSms listeners
              * - TicketServing: Triggers BroadcastTicketServing listener
              */
             if ($oldStatus !== $newStatus) {

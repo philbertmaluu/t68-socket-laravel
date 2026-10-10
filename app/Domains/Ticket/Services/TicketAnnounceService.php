@@ -7,6 +7,7 @@ use App\Domains\Counter\Models\Counter;
 use App\Domains\Device\Models\Device;
 use App\Domains\Ticket\Models\OfficeAnnounceLock;
 use App\Domains\Ticket\Models\PendingTicketCall;
+use App\Events\TicketCalled;
 use App\Domains\Ticket\Models\Ticket;
 use App\Domains\Ticket\Models\TicketAnnounceJob;
 use App\Shared\Helpers\TransactionHelper;
@@ -134,6 +135,14 @@ class TicketAnnounceService
         // waiting behind a stuck or already-acked announce.
         $result = $this->requestAnnounceForClaimedTicket($payload, true);
         $result['recall_mode'] = $mode;
+
+        $ticketId = $payload['id'] ?? null;
+        if ($ticketId) {
+            $ticket = Ticket::query()->find($ticketId);
+            if ($ticket) {
+                event(new TicketCalled($ticket));
+            }
+        }
 
         return $result;
     }
