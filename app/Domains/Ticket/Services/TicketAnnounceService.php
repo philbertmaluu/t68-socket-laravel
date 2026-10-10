@@ -130,7 +130,9 @@ class TicketAnnounceService
             );
         }
 
-        $result = $this->requestAnnounceForClaimedTicket($payload);
+        // Preempt the office lock so the TV plays this immediately instead of
+        // waiting behind a stuck or already-acked announce.
+        $result = $this->requestAnnounceForClaimedTicket($payload, true);
         $result['recall_mode'] = $mode;
 
         return $result;
@@ -140,18 +142,19 @@ class TicketAnnounceService
      * Announce a ticket already claimed (accept transfer / resume hold).
      *
      * @param array<string, mixed> $ticketPayload
+     * @param bool $preemptLock When true (Recall), replace a stuck/current lock so the TV plays now.
      * @return array{status: string, message?: string, pending_id?: string, ticket?: array, announce_id?: string}
      */
-    public function requestAnnounceForClaimedTicket(array $ticketPayload): array
+    public function requestAnnounceForClaimedTicket(array $ticketPayload, bool $preemptLock = false): array
     {
-        $run = function () use ($ticketPayload) {
+        $run = function () use ($ticketPayload, $preemptLock) {
             $user = Auth::guard('sanctum')->user();
             if (!$user || !isset($user->id)) {
                 throw new AuthenticationException('User not authenticated');
             }
 
             $location = $this->getUserOfficeAndRegionFromHrp();
-            $officeId = (string) $location['office_id'];
+            $officeId = $this->resolveAnnounceOfficeId($ticketPayload, (string) $location['office_id']);
             $clerkId = (string) $user->id;
             $ticketId = $ticketPayload['id'] ?? null;
 
@@ -160,20 +163,24 @@ class TicketAnnounceService
             $lock = $this->lockOfficeRow($officeId);
 
             if ($lock->is_announcing) {
-                $pending = PendingTicketCall::create([
-                    'office_id' => $officeId,
-                    'clerk_id' => $clerkId,
-                    'status' => PendingTicketCall::STATUS_WAITING,
-                    'ticket_id' => $ticketId,
-                    'requested_at' => now(),
-                ]);
+                if ($preemptLock) {
+                    $this->expireLockJob($lock);
+                } else {
+                    $pending = PendingTicketCall::create([
+                        'office_id' => $officeId,
+                        'clerk_id' => $clerkId,
+                        'status' => PendingTicketCall::STATUS_WAITING,
+                        'ticket_id' => $ticketId,
+                        'requested_at' => now(),
+                    ]);
 
-                return [
-                    'status' => 'queued',
-                    'pending_id' => $pending->id,
-                    'ticket' => $ticketPayload,
-                    'message' => 'Wait — another ticket is being announced. Yours will be called automatically.',
-                ];
+                    return [
+                        'status' => 'queued',
+                        'pending_id' => $pending->id,
+                        'ticket' => $ticketPayload,
+                        'message' => 'Wait — another ticket is being announced. Yours will be called automatically.',
+                    ];
+                }
             }
 
             $job = $this->createAnnounceJobFromPayload($officeId, $ticketPayload);
@@ -213,11 +220,6 @@ class TicketAnnounceService
             ->first();
 
         if (!$lock || !$lock->is_announcing || !$lock->current_announce_id) {
-            return null;
-        }
-
-        // Soft TTL check without write — skip stale ids quickly.
-        if ($lock->started_at && $lock->started_at->lt(now()->subSeconds(self::LOCK_TTL_SECONDS))) {
             return null;
         }
 
@@ -510,6 +512,47 @@ class TicketAnnounceService
             'announce_id' => $job->id,
             'ticket' => $ticketPayload,
         ];
+    }
+
+    /**
+     * TV devices poll by device.office_id. Prefer the ticket's office so recall
+     * lands on the same screens as waiting-and-serving, not only HRPD office.
+     */
+    private function resolveAnnounceOfficeId(array $ticketPayload, string $hrpOfficeId): string
+    {
+        $fromPayload = trim((string) ($ticketPayload['office_id'] ?? ''));
+        if ($fromPayload !== '') {
+            return $fromPayload;
+        }
+
+        $ticketId = $ticketPayload['id'] ?? null;
+        if ($ticketId) {
+            $fromTicket = trim((string) (Ticket::query()->where('id', $ticketId)->value('office_id') ?? ''));
+            if ($fromTicket !== '') {
+                return $fromTicket;
+            }
+        }
+
+        return trim($hrpOfficeId);
+    }
+
+    private function expireLockJob(OfficeAnnounceLock $lock): void
+    {
+        if ($lock->current_announce_id) {
+            TicketAnnounceJob::query()
+                ->where('id', $lock->current_announce_id)
+                ->whereIn('status', [
+                    TicketAnnounceJob::STATUS_PENDING,
+                    TicketAnnounceJob::STATUS_PLAYING,
+                ])
+                ->update(['status' => TicketAnnounceJob::STATUS_EXPIRED]);
+        }
+
+        $lock->update([
+            'is_announcing' => false,
+            'current_announce_id' => null,
+            'started_at' => null,
+        ]);
     }
 
     private function createAnnounceJobFromPayload(string $officeId, array $ticketPayload): TicketAnnounceJob

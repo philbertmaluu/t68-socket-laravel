@@ -996,6 +996,7 @@ class TicketService
         return [
             'id' => $ticket->id,
             'ticket_number' => $ticket->ticket_number,
+            'office_id' => $ticket->office_id ? (string) $ticket->office_id : null,
             'service_type' => $ticket->service_type,
             'estimated_time' => $ticket->estimated_time,
             'status' => $ticket->status,
