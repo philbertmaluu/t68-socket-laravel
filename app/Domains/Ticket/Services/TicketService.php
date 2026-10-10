@@ -910,6 +910,7 @@ class TicketService
      *
      * @param  list<string>  $clerkIds
      */
+    private function findPreviousTicketForClerk(array $clerkIds, string $officeId): ?Ticket
     {
         if ($clerkIds === [] || $officeId === '') {
             return null;
