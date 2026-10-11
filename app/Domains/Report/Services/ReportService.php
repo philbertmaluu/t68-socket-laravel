@@ -153,7 +153,7 @@ class ReportService
 
         $totalTickets = (clone $query)->count();
         $completedTickets = (clone $query)->where('status', 'completed')->count();
-        $skippedTickets = (clone $query)->whereIn('status', ['skipped', 'no_show', 'cancelled'])->count();
+        $holdTickets = (clone $query)->where('status', 'hold')->count();
         $transferredTickets = (clone $query)->whereNotNull('transferred_to_counter_id')->count();
 
         $hourlyData = $this->buildHourlyDataPortable(clone $query);
@@ -167,7 +167,7 @@ class ReportService
             'reportData' => [
                 'totalTickets' => $totalTickets,
                 'completedTickets' => $completedTickets,
-                'skippedTickets' => $skippedTickets,
+                'holdTickets' => $holdTickets,
                 'transferredTickets' => $transferredTickets,
                 'averageWaitTime' => $this->averageWaitMinutes(clone $query),
                 'averageServiceTime' => $this->averageServiceMinutes(clone $query),
@@ -621,12 +621,12 @@ class ReportService
     }
 
     /**
-     * @return list<array{officeId: string, officeName: string, tickets: int, completed: int, waiting: int}>
+     * @return list<array{officeId: string, officeName: string, tickets: int, completed: int, waiting: int, suspended: int, hold: int}>
      */
     private function buildOfficePerformance($query): array
     {
         $rows = (clone $query)
-            ->selectRaw("office_id, COUNT(*) as ticket_count, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count, SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END) as waiting_count")
+            ->selectRaw("office_id, COUNT(*) as ticket_count, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count, SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END) as waiting_count, SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) as suspended_count, SUM(CASE WHEN status = 'hold' THEN 1 ELSE 0 END) as hold_count")
             ->whereNotNull('office_id')
             ->groupBy('office_id')
             ->get();
@@ -648,6 +648,8 @@ class ReportService
                 'tickets' => (int) $row->ticket_count,
                 'completed' => (int) $row->completed_count,
                 'waiting' => (int) $row->waiting_count,
+                'suspended' => (int) $row->suspended_count,
+                'hold' => (int) $row->hold_count,
             ];
         }
 
