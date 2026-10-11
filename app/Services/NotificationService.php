@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Domains\Feedback\Services\FeedbackService;
 use App\Domains\Ticket\Models\Ticket;
 use App\Domains\Notification\Services\NotificationTemplateService;
+use App\Mail\NssfMail;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Exception;
 
 class NotificationService
@@ -75,16 +77,17 @@ class NotificationService
     }
 
     /**
-     * Send email notification via the same ICTMS instant send-notification endpoint.
+     * Send email via Laravel Mail (SMTP), from NSSF. Does not use ICTMS instant notifications.
      *
      * @return array{success: bool, message: string, data: array|null}
      */
     public function sendEmail(
         string $recipient,
         string $message,
-        string $process = 'MEMBER EMAIL',
-        ?int $expiryHours = 4,
-        ?string $attachment = null
+        string $subject = 'NSSF notification',
+        ?string $attachmentContents = null,
+        string $attachmentName = 'attachment.pdf',
+        string $attachmentMime = 'application/pdf',
     ): array {
         try {
             $recipient = strtolower(trim($recipient));
@@ -96,20 +99,31 @@ class NotificationService
                 throw new Exception('Message body is required');
             }
 
-            return $this->sendInstantNotification(
-                type: 'email',
-                recipient: $recipient,
-                message: $message,
-                process: $process,
-                expiryHours: $expiryHours,
-                attachment: $attachment,
-                successMessage: 'Email notification sent successfully',
-                failurePrefix: 'Failed to send email',
-            );
+            Mail::to($recipient)->send(new NssfMail(
+                $subject,
+                $message,
+                $attachmentContents,
+                $attachmentName,
+                $attachmentMime,
+            ));
+
+            Log::info('Email sent successfully', [
+                'recipient' => $recipient,
+                'subject' => $subject,
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'Email notification sent successfully',
+                'data' => [
+                    'recipient' => $recipient,
+                    'subject' => $subject,
+                ],
+            ];
         } catch (Exception $e) {
             Log::error('Exception while sending email notification', [
                 'recipient' => $recipient ?? 'unknown',
-                'process' => $process,
+                'subject' => $subject,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);

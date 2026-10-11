@@ -64,16 +64,24 @@ class ClerkMemberStatementService
         $normalizedView = $view === 'detailed' ? 'detailed' : 'statement';
         $label = $normalizedView === 'detailed' ? 'detailed member statement' : 'member statement';
         $memberId = preg_replace('/\D/', '', (string) $memberNumber) ?? '';
-        $body = $memberId !== ''
+        $subject = $memberId !== ''
+            ? 'NSSF '.$label.' — '.$memberId
+            : 'NSSF '.$label;
+        $bodyText = $memberId !== ''
             ? "Please find attached your NSSF {$label} for member {$memberId}."
             : "Please find attached your NSSF {$label}.";
+        $html = '<p>'.e($bodyText).'</p><p>Best regards,<br><strong>NSSF</strong></p>';
+        $filename = $memberId !== ''
+            ? 'nssf-'.$normalizedView.'-'.$memberId.'.pdf'
+            : 'nssf-'.$normalizedView.'.pdf';
 
         $result = $this->notifications->sendEmail(
             $recipient,
-            $body,
-            'MEMBER STATEMENT',
-            4,
-            'data:application/pdf;base64,'.$raw
+            $html,
+            $subject,
+            $decoded,
+            $filename,
+            'application/pdf',
         );
 
         if (!$result['success']) {

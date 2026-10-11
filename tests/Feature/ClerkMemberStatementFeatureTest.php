@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Domains\Authentication\Models\User;
+use App\Mail\NssfMail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -118,14 +120,10 @@ class ClerkMemberStatementFeatureTest extends TestCase
         ])->assertStatus(422);
     }
 
-    public function test_clerk_can_email_statement_pdf_via_ictms(): void
+    public function test_clerk_can_email_statement_pdf_from_nssf(): void
     {
+        Mail::fake();
         $pdf = base64_encode("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
-        $ictms = 'https://ictms-api.nssf.go.tz/api/send-notification';
-        config()->set('services.ictms.endpoint', $ictms);
-        Http::fake([
-            $ictms => Http::response(['success' => true, 'message' => 'sent'], 200),
-        ]);
 
         Sanctum::actingAs($this->createClerk());
 
@@ -138,14 +136,14 @@ class ClerkMemberStatementFeatureTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
 
-        Http::assertSent(function ($request) use ($ictms, $pdf) {
-            $payload = $request->data();
+        Mail::assertSent(NssfMail::class, function (NssfMail $mail) {
+            $attachments = $mail->attachments();
 
-            return $request->url() === $ictms
-                && ($payload['notification_type'] ?? null) === 'email'
-                && ($payload['notification_method'] ?? null) === 'instant'
-                && ($payload['notification_recipient'] ?? null) === 'member@example.com'
-                && str_contains((string) ($payload['notification_attachment'] ?? ''), $pdf);
+            return $mail->hasTo('member@example.com')
+                && $mail->hasFrom((string) config('mail.from.address'), 'NSSF')
+                && $mail->hasSubject('NSSF member statement — 48264073')
+                && count($attachments) === 1
+                && $attachments[0]->as === 'nssf-statement-48264073.pdf';
         });
     }
 
