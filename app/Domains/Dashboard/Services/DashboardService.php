@@ -74,15 +74,11 @@ class DashboardService
         }
 
         [$hrpRegions, $hrpOffices] = $this->loadHrpRegionsAndOffices();
-        $officeIds = array_values(array_unique(array_map(
-            static fn (array $office): string => (string) $office['id'],
-            $hrpOffices
-        )));
 
-        $ticketsByOffice = $this->adminTicketsByOffice($officeIds);
-        $waitByOffice = $this->adminWaitMinutesByOffice($officeIds);
-        $countersByOffice = $this->adminCountersByOffice($officeIds);
-        $devicesByOffice = $this->adminDevicesByOffice($officeIds);
+        $ticketsByOffice = $this->adminTicketsByOffice();
+        $waitByOffice = $this->adminWaitMinutesByOffice();
+        $countersByOffice = $this->adminCountersByOffice();
+        $devicesByOffice = $this->adminDevicesByOffice();
 
         $officesByRegion = [];
         foreach ($hrpOffices as $office) {
@@ -95,14 +91,16 @@ class DashboardService
             $regionOffices = $officesByRegion[$regionId] ?? [];
             $mappedOffices = [];
             foreach ($regionOffices as $office) {
+                $officeKey = $this->officeKey($office['id']);
                 $mappedOffices[] = $this->mapAdminOffice(
                     $office,
-                    $ticketsByOffice[(string) $office['id']] ?? ['waiting' => 0, 'serving' => 0, 'queues' => 0],
-                    $waitByOffice[(string) $office['id']] ?? 0,
-                    $countersByOffice[(string) $office['id']] ?? ['total' => 0, 'open' => 0],
-                    $devicesByOffice[(string) $office['id']] ?? [
+                    $ticketsByOffice[$officeKey] ?? ['waiting' => 0, 'serving' => 0, 'queues' => 0],
+                    $waitByOffice[$officeKey] ?? 0,
+                    $countersByOffice[$officeKey] ?? ['total' => 0, 'open' => 0],
+                    $devicesByOffice[$officeKey] ?? [
                         'kiosk' => ['total' => 0, 'online' => 0],
                         'tv' => ['total' => 0, 'online' => 0],
+                        'desktop' => ['total' => 0, 'online' => 0],
                     ],
                 );
             }
@@ -568,24 +566,18 @@ class DashboardService
     }
 
     /**
-     * @param  list<string>  $officeIds
      * @return array<string, array{waiting: int, serving: int, queues: int}>
      */
-    private function adminTicketsByOffice(array $officeIds): array
+    private function adminTicketsByOffice(): array
     {
-        if ($officeIds === []) {
-            return [];
-        }
-
         $rows = Ticket::query()
-            ->whereIn('office_id', $officeIds)
             ->whereIn('status', ['waiting', 'called', 'serving', 'paused'])
             ->get(['office_id', 'status', 'service_type']);
 
         $out = [];
         $queueKeys = [];
         foreach ($rows as $row) {
-            $officeId = (string) ($row->office_id ?? '');
+            $officeId = $this->officeKey($row->office_id ?? '');
             if ($officeId === '') {
                 continue;
             }
@@ -608,22 +600,21 @@ class DashboardService
         foreach ($queueKeys as $officeId => $services) {
             $out[$officeId]['queues'] = count($services);
         }
+        foreach ($out as $officeId => $counts) {
+            if ($counts['queues'] === 0 && $counts['waiting'] > 0) {
+                $out[$officeId]['queues'] = 1;
+            }
+        }
 
         return $out;
     }
 
     /**
-     * @param  list<string>  $officeIds
      * @return array<string, int>
      */
-    private function adminWaitMinutesByOffice(array $officeIds): array
+    private function adminWaitMinutesByOffice(): array
     {
-        if ($officeIds === []) {
-            return [];
-        }
-
         $samples = Ticket::query()
-            ->whereIn('office_id', $officeIds)
             ->whereNotNull('created_at')
             ->whereNotNull('called_at')
             ->where('created_at', '>=', now()->startOfDay())
@@ -632,7 +623,7 @@ class DashboardService
         $totals = [];
         $counts = [];
         foreach ($samples as $ticket) {
-            $officeId = (string) ($ticket->office_id ?? '');
+            $officeId = $this->officeKey($ticket->office_id ?? '');
             if ($officeId === '' || !$ticket->created_at || !$ticket->called_at) {
                 continue;
             }
@@ -653,22 +644,15 @@ class DashboardService
     }
 
     /**
-     * @param  list<string>  $officeIds
      * @return array<string, array{total: int, open: int}>
      */
-    private function adminCountersByOffice(array $officeIds): array
+    private function adminCountersByOffice(): array
     {
-        if ($officeIds === []) {
-            return [];
-        }
-
-        $rows = Counter::query()
-            ->whereIn('office_id', $officeIds)
-            ->get(['office_id', 'status']);
+        $rows = Counter::query()->get(['office_id', 'status']);
 
         $out = [];
         foreach ($rows as $row) {
-            $officeId = (string) ($row->office_id ?? '');
+            $officeId = $this->officeKey($row->office_id ?? '');
             if ($officeId === '') {
                 continue;
             }
@@ -685,23 +669,18 @@ class DashboardService
     }
 
     /**
-     * @param  list<string>  $officeIds
-     * @return array<string, array{kiosk: array{total: int, online: int}, tv: array{total: int, online: int}>}
+     * @return array<string, array{kiosk: array{total: int, online: int}, tv: array{total: int, online: int}, desktop: array{total: int, online: int}>}
      */
-    private function adminDevicesByOffice(array $officeIds): array
+    private function adminDevicesByOffice(): array
     {
-        if ($officeIds === []) {
-            return [];
-        }
-
         $rows = Device::query()
-            ->whereIn('office_id', $officeIds)
-            ->whereIn('type', [Device::TYPE_KIOSK, Device::TYPE_TV])
-            ->get(['office_id', 'type', 'status']);
+            ->whereIn('type', [Device::TYPE_KIOSK, Device::TYPE_TV, 'DESKTOP', 'desktop'])
+            ->get(['office_id', 'type', 'status', 'last_seen']);
 
+        $onlineCutoff = now()->subMinutes(10);
         $out = [];
         foreach ($rows as $row) {
-            $officeId = (string) ($row->office_id ?? '');
+            $officeId = $this->officeKey($row->office_id ?? '');
             if ($officeId === '') {
                 continue;
             }
@@ -709,11 +688,17 @@ class DashboardService
                 $out[$officeId] = [
                     'kiosk' => ['total' => 0, 'online' => 0],
                     'tv' => ['total' => 0, 'online' => 0],
+                    'desktop' => ['total' => 0, 'online' => 0],
                 ];
             }
-            $bucket = strtoupper((string) $row->type) === Device::TYPE_TV ? 'tv' : 'kiosk';
+            $type = strtoupper(str_replace('-', '_', (string) $row->type));
+            $bucket = match ($type) {
+                Device::TYPE_TV, 'TV' => 'tv',
+                'DESKTOP' => 'desktop',
+                default => 'kiosk',
+            };
             $out[$officeId][$bucket]['total']++;
-            if (strtolower((string) $row->status) === Device::STATUS_ONLINE) {
+            if ($this->deviceIsOnline($row, $onlineCutoff)) {
                 $out[$officeId][$bucket]['online']++;
             }
         }
@@ -721,18 +706,44 @@ class DashboardService
         return $out;
     }
 
+    private function deviceIsOnline(Device $device, \DateTimeInterface $onlineCutoff): bool
+    {
+        if ($device->last_seen instanceof \DateTimeInterface) {
+            return $device->last_seen->gte($onlineCutoff);
+        }
+
+        return strtolower((string) $device->status) === Device::STATUS_ONLINE;
+    }
+
+    private function officeKey(mixed $id): string
+    {
+        $value = trim((string) $id);
+        if ($value === '') {
+            return '';
+        }
+        if (preg_match('/^-?\d+(\.0+)?$/', $value) === 1) {
+            return (string) (int) $value;
+        }
+
+        return $value;
+    }
+
     /**
      * @param  array{id: string, name: string, region_id: string, office_code: string|null}  $office
      * @param  array{waiting: int, serving: int, queues: int}  $tickets
      * @param  array{total: int, open: int}  $counters
-     * @param  array{kiosk: array{total: int, online: int}, tv: array{total: int, online: int}}  $devices
+     * @param  array{kiosk: array{total: int, online: int}, tv: array{total: int, online: int}, desktop?: array{total: int, online: int}}  $devices
      * @return array<string, mixed>
      */
     private function mapAdminOffice(array $office, array $tickets, int $avgWait, array $counters, array $devices): array
     {
+        $desktop = $devices['desktop'] ?? ['total' => 0, 'online' => 0];
+        if ($desktop['total'] === 0 && $counters['total'] > 0) {
+            $desktop = ['total' => $counters['total'], 'online' => $counters['open']];
+        }
         $kioskOffline = max(0, $devices['kiosk']['total'] - $devices['kiosk']['online']);
         $tvOffline = max(0, $devices['tv']['total'] - $devices['tv']['online']);
-        $desktopOffline = max(0, $counters['total'] - $counters['open']);
+        $desktopOffline = max(0, $desktop['total'] - $desktop['online']);
 
         return [
             'id' => $office['id'],
@@ -755,8 +766,8 @@ class DashboardService
                     'offline' => $tvOffline,
                 ],
                 'desktopApps' => [
-                    'total' => $counters['total'],
-                    'online' => $counters['open'],
+                    'total' => $desktop['total'],
+                    'online' => $desktop['online'],
                     'offline' => $desktopOffline,
                 ],
             ],
