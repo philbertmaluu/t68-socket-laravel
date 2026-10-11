@@ -34,7 +34,7 @@ class AdminReportFeatureTest extends TestCase
         $this->getJson('/api/qms/reports/admin?from=2026-01-01&to=2026-01-31')
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.meta.scope', 'country')
+            ->assertJsonPath('data.meta.scope', 'all')
             ->assertJsonStructure([
                 'data' => [
                     'reportData',

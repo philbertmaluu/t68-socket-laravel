@@ -2,35 +2,36 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>NSSF QMS Country Report</title>
+    <title>NSSF QMS {{ $reportHeading }}</title>
     <style>
-        @page { margin: 22px 22px 28px 22px; }
+        @page { margin: 20px 20px 26px 20px; }
         body { font-family: DejaVu Sans, Helvetica, Arial, sans-serif; font-size: 9px; color: #1f1f1f; margin: 0; padding: 0; }
-        .watermark { position: fixed; top: 38%; left: 0; width: 100%; text-align: center; opacity: 0.07; z-index: -1000; }
-        .watermark img { width: 160px; height: 160px; }
-        .header-table { width: 100%; border-collapse: collapse; border-bottom: 3px solid #902d30; margin: 0 0 10px 0; padding: 0 0 8px 0; }
-        .header-table td { vertical-align: middle; padding: 0; }
-        .brand-logo { width: 42px; height: 42px; }
-        .brand-name { font-size: 13px; font-weight: bold; color: #902d30; margin: 0; padding: 0; }
-        .brand-sub { font-size: 8px; color: #666; margin: 1px 0 0 0; padding: 0; }
-        .report-title { font-size: 12px; font-weight: bold; color: #222; margin: 0; padding: 0; text-align: right; }
-        .meta-grid { width: 100%; border-collapse: collapse; margin: 0 0 10px 0; }
-        .meta-grid td { vertical-align: top; padding: 3px 6px 3px 0; width: 25%; }
-        .meta-label { font-size: 7px; text-transform: uppercase; letter-spacing: 0.3px; color: #888; margin: 0; padding: 0; }
+        .watermark { position: fixed; top: 36%; left: 0; width: 100%; text-align: center; opacity: 0.06; z-index: -1000; }
+        .watermark img { width: 170px; height: 170px; }
+        .header-table { width: 100%; border-collapse: collapse; border-bottom: 3px solid #902d30; margin: 0 0 10px 0; }
+        .header-table td { vertical-align: middle; padding: 0 0 8px 0; }
+        .brand-logo { width: 46px; height: 46px; }
+        .brand-name { font-size: 14px; font-weight: bold; color: #902d30; margin: 0; padding: 0; }
+        .brand-sub { font-size: 8px; color: #666; margin: 2px 0 0 0; padding: 0; }
+        .report-title { font-size: 13px; font-weight: bold; color: #222; margin: 0; padding: 0; text-align: right; }
+        .meta-grid { width: 100%; border-collapse: collapse; margin: 0 0 8px 0; }
+        .meta-grid td { vertical-align: top; padding: 4px 8px 4px 0; width: 25%; }
+        .meta-label { font-size: 7px; text-transform: uppercase; letter-spacing: 0.4px; color: #888; margin: 0; padding: 0; }
         .meta-value { font-size: 10px; font-weight: bold; color: #222; margin: 1px 0 0 0; padding: 0; }
         .kpi { width: 100%; border-collapse: collapse; margin: 0 0 12px 0; }
-        .kpi td { width: 16.66%; background: #faf5f5; border: 1px solid #e8d0d1; padding: 6px 8px; }
+        .kpi td { width: 16.66%; background: #faf5f5; border: 1px solid #e8d0d1; padding: 7px 8px; }
         .kpi .meta-label { color: #902d30; font-weight: bold; }
         table.data { width: 100%; border-collapse: collapse; margin: 0; }
         table.data thead { display: table-header-group; }
         table.data thead th { background-color: #902d30; color: #ffffff; font-size: 8px; font-weight: bold; text-align: left; padding: 6px 4px; border: none; }
         table.data tbody td { padding: 5px 4px; border-bottom: 1px solid #ececec; font-size: 8px; color: #333; vertical-align: top; }
         table.data tbody tr:nth-child(even) td { background: #fafafa; }
+        .region-banner td { background: #f3e4e5 !important; color: #902d30; font-weight: bold; font-size: 8px; letter-spacing: 0.3px; text-transform: uppercase; border-bottom: 1px solid #e0b8ba; padding: 6px 4px; }
         .num { text-align: right; }
         .empty { text-align: center; padding: 18px 10px; color: #888; border: 1px dashed #ddd; }
         .summary { margin: 8px 0 0 0; font-size: 8px; color: #555; }
         .summary strong { color: #902d30; }
-        .footer { position: fixed; left: 0; right: 0; bottom: -12px; font-size: 7px; color: #888; border-top: 1px solid #e5e5e5; padding-top: 4px; }
+        .footer { position: fixed; left: 0; right: 0; bottom: -10px; font-size: 7px; color: #888; border-top: 1px solid #e5e5e5; padding-top: 4px; }
         .footer-table { width: 100%; border-collapse: collapse; }
         .footer-table td { font-size: 7px; color: #888; padding: 0; }
     </style>
@@ -38,20 +39,20 @@
 <body>
     @if(!empty($logoPath))
         <div class="watermark">
-            <img src="{{ $logoPath }}" width="160" height="160" alt="NSSF">
+            <img src="{{ $logoPath }}" width="170" height="170" alt="NSSF">
         </div>
     @endif
 
     <table class="header-table">
         <tr>
-            <td style="width: 50px;">
+            <td style="width: 54px;">
                 @if(!empty($logoPath))
-                    <img class="brand-logo" src="{{ $logoPath }}" width="42" height="42" alt="NSSF">
+                    <img class="brand-logo" src="{{ $logoPath }}" width="46" height="46" alt="NSSF">
                 @endif
             </td>
             <td>
                 <p class="brand-name">National Social Security Fund</p>
-                <p class="brand-sub">Queue Management System — Country Reports</p>
+                <p class="brand-sub">Queue Management System — {{ $reportHeading }}</p>
             </td>
             <td style="width: 34%; text-align: right;">
                 <p class="report-title">{{ $viewTitle }}</p>
@@ -64,20 +65,20 @@
     <table class="meta-grid">
         <tr>
             <td>
-                <p class="meta-label">Scope</p>
-                <p class="meta-value">{{ $scopeName }}</p>
+                <p class="meta-label">Region</p>
+                <p class="meta-value">{{ $regionName }}</p>
+            </td>
+            <td>
+                <p class="meta-label">Office</p>
+                <p class="meta-value">{{ $officeName }}</p>
             </td>
             <td>
                 <p class="meta-label">Period</p>
                 <p class="meta-value">{{ $reportDate }}</p>
             </td>
             <td>
-                <p class="meta-label">Report</p>
-                <p class="meta-value">{{ $viewTitle }}</p>
-            </td>
-            <td>
                 <p class="meta-label">Document</p>
-                <p class="meta-value">QMS-AR-{{ $dateKey }}</p>
+                <p class="meta-value">QMS-{{ strtoupper($scopeKind) }}-{{ $dateKey }}</p>
             </td>
         </tr>
     </table>
@@ -111,6 +112,12 @@
         </tr>
     </table>
 
+    @php
+        $groupByRegion = ($scopeKind ?? '') !== 'office';
+        $currentRegion = null;
+        $rowNumber = 0;
+    @endphp
+
     @if($view === 'office')
         @if(count($officePerformance) === 0)
             <div class="empty">No office performance recorded for this period.</div>
@@ -119,8 +126,10 @@
                 <thead>
                     <tr>
                         <th style="width: 5%;">#</th>
-                        <th style="width: 18%;">Region</th>
-                        <th style="width: 25%;">Office</th>
+                        @if(!$groupByRegion)
+                            <th style="width: 18%;">Region</th>
+                        @endif
+                        <th>Office</th>
                         <th style="width: 10%;" class="num">Tickets</th>
                         <th style="width: 10%;" class="num">Completed</th>
                         <th style="width: 10%;" class="num">Waiting</th>
@@ -129,10 +138,22 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach($officePerformance as $index => $row)
+                    @foreach($officePerformance as $row)
+                        @php
+                            $region = $row['regionName'] !== '' ? $row['regionName'] : 'Other';
+                            $rowNumber++;
+                        @endphp
+                        @if($groupByRegion && $region !== $currentRegion)
+                            @php $currentRegion = $region; @endphp
+                            <tr class="region-banner">
+                                <td colspan="7">{{ $region }}</td>
+                            </tr>
+                        @endif
                         <tr>
-                            <td>{{ $index + 1 }}</td>
-                            <td>{{ $row['regionName'] !== '' ? $row['regionName'] : '—' }}</td>
+                            <td>{{ $rowNumber }}</td>
+                            @if(!$groupByRegion)
+                                <td>{{ $region }}</td>
+                            @endif
                             <td>{{ $row['officeName'] }}</td>
                             <td class="num">{{ number_format((int) $row['tickets']) }}</td>
                             <td class="num">{{ number_format((int) $row['completed']) }}</td>
@@ -177,11 +198,14 @@
         @if(count($officeServices) === 0)
             <div class="empty">No service tickets recorded for this period.</div>
         @else
+            @php $serviceColspan = 3 + count($serviceTypes); @endphp
             <table class="data">
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Region</th>
+                        @if(!$groupByRegion)
+                            <th>Region</th>
+                        @endif
                         <th>Office</th>
                         @foreach($serviceTypes as $type)
                             <th class="num">{{ $type }}</th>
@@ -190,16 +214,26 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach($officeServices as $index => $office)
+                    @foreach($officeServices as $office)
                         @php
+                            $region = $office['regionName'] !== '' ? $office['regionName'] : 'Other';
+                            $rowNumber++;
                             $counts = [];
                             foreach (($office['services'] ?? []) as $service) {
                                 $counts[(string) ($service['type'] ?? '')] = (int) ($service['count'] ?? 0);
                             }
                         @endphp
+                        @if($groupByRegion && $region !== $currentRegion)
+                            @php $currentRegion = $region; @endphp
+                            <tr class="region-banner">
+                                <td colspan="{{ $serviceColspan }}">{{ $region }}</td>
+                            </tr>
+                        @endif
                         <tr>
-                            <td>{{ $index + 1 }}</td>
-                            <td>{{ $office['regionName'] !== '' ? $office['regionName'] : '—' }}</td>
+                            <td>{{ $rowNumber }}</td>
+                            @if(!$groupByRegion)
+                                <td>{{ $region }}</td>
+                            @endif
                             <td>{{ $office['officeName'] }}</td>
                             @foreach($serviceTypes as $type)
                                 <td class="num">{{ number_format((int) ($counts[$type] ?? 0)) }}</td>
@@ -217,7 +251,7 @@
         <table class="footer-table">
             <tr>
                 <td>NSSF Queue Management System — Confidential</td>
-                <td style="text-align: right;">Generated by {{ $generatedBy }} · {{ $generatedAt }}</td>
+                <td style="text-align: right;">{{ $reportHeading }} · {{ $generatedBy }} · {{ $generatedAt }}</td>
             </tr>
         </table>
     </div>

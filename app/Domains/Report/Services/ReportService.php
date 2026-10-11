@@ -137,18 +137,32 @@ class ReportService
     }
 
     /**
-     * National or per-office report for queue administrators.
+     * All-regions, regional, or per-office report for queue administrators.
      *
      * @return array<string, mixed>
      */
-    public function adminReport(string $from, string $to, ?string $officeId = null): array
+    public function adminReport(string $from, string $to, ?string $officeId = null, ?string $regionId = null): array
     {
         $this->requireAuth();
         $officeId = trim((string) $officeId);
+        $regionId = trim((string) $regionId);
+        $hrpOffices = $this->hrpOfficesForFilter();
 
         $query = Ticket::query()->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59']);
         if ($officeId !== '') {
             $query->where('office_id', $officeId);
+        } elseif ($regionId !== '') {
+            $regionOfficeIds = [];
+            foreach ($hrpOffices as $office) {
+                if ((string) ($office['region_id'] ?? '') === $regionId) {
+                    $regionOfficeIds[] = (string) $office['id'];
+                }
+            }
+            if ($regionOfficeIds === []) {
+                $query->whereRaw('1 = 0');
+            } else {
+                $query->whereIn('office_id', $regionOfficeIds);
+            }
         }
 
         $totalTickets = (clone $query)->count();
@@ -156,7 +170,6 @@ class ReportService
         $holdTickets = (clone $query)->where('status', 'hold')->count();
         $transferredTickets = (clone $query)->whereNotNull('transferred_to_counter_id')->count();
 
-        $hrpOffices = $this->hrpOfficesForFilter();
         $hourlyData = $this->buildHourlyDataPortable(clone $query);
         $peakHour = '—';
         if ($hourlyData !== []) {
@@ -181,8 +194,9 @@ class ReportService
             'officeServices' => $this->buildOfficeServices(clone $query, $hrpOffices),
             'offices' => $hrpOffices,
             'meta' => [
-                'scope' => $officeId === '' ? 'country' : 'office',
+                'scope' => $officeId !== '' ? 'office' : ($regionId !== '' ? 'region' : 'all'),
                 'officeId' => $officeId !== '' ? $officeId : null,
+                'regionId' => $officeId === '' && $regionId !== '' ? $regionId : null,
                 'from' => $from,
                 'to' => $to,
             ],
@@ -197,22 +211,11 @@ class ReportService
         string $to,
         ?string $officeId,
         string $format,
-        string $view
+        string $view,
+        ?string $regionId = null
     ): array {
-        $payload = $this->adminReport($from, $to, $officeId);
-        $officeId = trim((string) $officeId);
-        $scopeName = 'Whole country';
-        if ($officeId !== '') {
-            foreach ($payload['offices'] as $office) {
-                if ((string) ($office['id'] ?? '') === $officeId) {
-                    $scopeName = (string) ($office['name'] ?? $officeId);
-                    break;
-                }
-            }
-            if ($scopeName === 'Whole country') {
-                $scopeName = $officeId;
-            }
-        }
+        $payload = $this->adminReport($from, $to, $officeId, $regionId);
+        $coverage = $this->resolveReportCoverage($payload['offices'] ?? [], $officeId, $regionId);
 
         $viewTitles = [
             'services' => 'Per services',
@@ -231,11 +234,19 @@ class ReportService
             .' – '
             .\Carbon\Carbon::parse($to)->format('F j, Y');
         $dateKey = str_replace('-', '', $from).'-'.str_replace('-', '', $to);
-        $safeScope = preg_replace('/[^A-Za-z0-9_-]+/', '-', $scopeName) ?: 'country';
+        $safeScope = preg_replace('/[^A-Za-z0-9_-]+/', '-', $coverage['scopeName']) ?: 'all-regions';
         $serviceTypes = $this->uniqueServiceTypes($payload['officeServices'] ?? []);
 
         if ($format === 'excel') {
-            $csv = $this->buildAdminReportCsv($payload, $view, $viewTitle, $scopeName, $reportDate, $generatedBy, $serviceTypes);
+            $csv = $this->buildAdminReportCsv(
+                $payload,
+                $view,
+                $viewTitle,
+                $coverage,
+                $reportDate,
+                $generatedBy,
+                $serviceTypes
+            );
 
             return [
                 'format' => 'excel',
@@ -255,7 +266,11 @@ class ReportService
             'logoPath' => $logoPath,
             'view' => $view,
             'viewTitle' => $viewTitle,
-            'scopeName' => $scopeName,
+            'scopeKind' => $coverage['scopeKind'],
+            'scopeName' => $coverage['scopeName'],
+            'regionName' => $coverage['regionName'],
+            'officeName' => $coverage['officeName'],
+            'reportHeading' => $coverage['reportHeading'],
             'reportDate' => $reportDate,
             'dateKey' => $dateKey,
             'generatedAt' => now()->format('d M Y H:i'),
@@ -822,6 +837,70 @@ class ReportService
     }
 
     /**
+     * @param  list<array{id: string, name: string, region_id: string, region_name: string}>  $offices
+     * @return array{scopeKind: string, scopeName: string, regionName: string, officeName: string, reportHeading: string}
+     */
+    private function resolveReportCoverage(array $offices, ?string $officeId, ?string $regionId): array
+    {
+        $officeId = trim((string) $officeId);
+        $regionId = trim((string) $regionId);
+
+        if ($officeId !== '') {
+            foreach ($offices as $office) {
+                if ((string) ($office['id'] ?? '') === $officeId) {
+                    $officeName = (string) ($office['name'] ?? $officeId);
+                    $regionName = (string) ($office['region_name'] ?? '');
+
+                    return [
+                        'scopeKind' => 'office',
+                        'scopeName' => $officeName,
+                        'regionName' => $regionName !== '' ? $regionName : '—',
+                        'officeName' => $officeName,
+                        'reportHeading' => 'Office Report',
+                    ];
+                }
+            }
+
+            return [
+                'scopeKind' => 'office',
+                'scopeName' => $officeId,
+                'regionName' => '—',
+                'officeName' => $officeId,
+                'reportHeading' => 'Office Report',
+            ];
+        }
+
+        if ($regionId !== '') {
+            $regionName = '';
+            foreach ($offices as $office) {
+                if ((string) ($office['region_id'] ?? '') === $regionId) {
+                    $regionName = (string) ($office['region_name'] ?? '');
+                    break;
+                }
+            }
+            if ($regionName === '') {
+                $regionName = 'Region';
+            }
+
+            return [
+                'scopeKind' => 'region',
+                'scopeName' => $regionName,
+                'regionName' => $regionName,
+                'officeName' => 'All offices',
+                'reportHeading' => 'Regional Report',
+            ];
+        }
+
+        return [
+            'scopeKind' => 'all',
+            'scopeName' => 'All regions',
+            'regionName' => 'All regions',
+            'officeName' => 'All offices',
+            'reportHeading' => 'All Regions Report',
+        ];
+    }
+
+    /**
      * @param  list<array{services?: list<array{type: string, count: int}>}>  $officeServices
      * @return list<string>
      */
@@ -844,13 +923,14 @@ class ReportService
 
     /**
      * @param  array<string, mixed>  $payload
+     * @param  array{scopeKind: string, scopeName: string, regionName: string, officeName: string, reportHeading: string}  $coverage
      * @param  list<string>  $serviceTypes
      */
     private function buildAdminReportCsv(
         array $payload,
         string $view,
         string $viewTitle,
-        string $scopeName,
+        array $coverage,
         string $reportDate,
         string $generatedBy,
         array $serviceTypes
@@ -858,9 +938,10 @@ class ReportService
         $handle = fopen('php://temp', 'r+');
         fwrite($handle, "\xEF\xBB\xBF");
         fputcsv($handle, ['National Social Security Fund']);
-        fputcsv($handle, ['Queue Management System — Country Reports']);
+        fputcsv($handle, ['Queue Management System — '.$coverage['reportHeading']]);
         fputcsv($handle, ['View', $viewTitle]);
-        fputcsv($handle, ['Scope', $scopeName]);
+        fputcsv($handle, ['Region', $coverage['regionName']]);
+        fputcsv($handle, ['Office', $coverage['officeName']]);
         fputcsv($handle, ['Period', $reportDate]);
         fputcsv($handle, ['Generated by', $generatedBy]);
         fputcsv($handle, ['Generated at', now()->format('d M Y H:i')]);

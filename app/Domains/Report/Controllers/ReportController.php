@@ -65,7 +65,7 @@ class ReportController extends BaseController
     }
 
     /**
-     * GET /api/qms/reports/admin?from=&to=&office_id=
+     * GET /api/qms/reports/admin?from=&to=&office_id=&region_id=
      */
     public function admin(Request $request): JsonResponse
     {
@@ -76,7 +76,13 @@ class ReportController extends BaseController
             }
 
             $officeId = trim((string) $request->query('office_id', ''));
-            $result = $this->service->adminReport($from, $to, $officeId !== '' ? $officeId : null);
+            $regionId = trim((string) $request->query('region_id', ''));
+            $result = $this->service->adminReport(
+                $from,
+                $to,
+                $officeId !== '' ? $officeId : null,
+                $regionId !== '' ? $regionId : null
+            );
 
             return $this->sendResponse($result, 'Admin report retrieved successfully');
         } catch (\Exception $e) {
@@ -85,7 +91,7 @@ class ReportController extends BaseController
     }
 
     /**
-     * GET /api/qms/reports/admin/export?from=&to=&office_id=&format=pdf|excel&view=services|office|officer
+     * GET /api/qms/reports/admin/export?from=&to=&office_id=&region_id=&format=pdf|excel&view=services|office|officer
      */
     public function exportAdmin(Request $request)
     {
@@ -106,12 +112,14 @@ class ReportController extends BaseController
             }
 
             $officeId = trim((string) $request->query('office_id', ''));
+            $regionId = trim((string) $request->query('region_id', ''));
             $export = $this->service->exportAdminReport(
                 $from,
                 $to,
                 $officeId !== '' ? $officeId : null,
                 $format,
-                $view
+                $view,
+                $regionId !== '' ? $regionId : null
             );
 
             return response($export['content'], 200, [
