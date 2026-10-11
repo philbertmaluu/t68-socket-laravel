@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Domains\Cfms\Services;
 
 use App\Domains\Cfms\Repositories\CfmsDataManagementClient;
+use App\Services\NotificationService;
 
 class ClerkMemberStatementService
 {
     public function __construct(
-        private CfmsDataManagementClient $cfms
+        private CfmsDataManagementClient $cfms,
+        private NotificationService $notifications
     ) {
     }
 
@@ -36,5 +38,48 @@ class ClerkMemberStatementService
             'view' => $normalizedView,
             'pdf_base64' => $pdf,
         ];
+    }
+
+    /**
+     * @return array{success: bool, message: string, data: array|null}
+     */
+    public function emailStatement(string $email, string $pdfBase64, ?string $memberNumber = null, string $view = 'statement'): array
+    {
+        $recipient = strtolower(trim($email));
+        if ($recipient === '' || !filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+            throw new \RuntimeException('A valid email address is required');
+        }
+
+        $raw = trim($pdfBase64);
+        if (str_starts_with($raw, 'data:')) {
+            $comma = strpos($raw, ',');
+            $raw = $comma === false ? '' : substr($raw, $comma + 1);
+        }
+        $raw = preg_replace('/\s+/', '', $raw) ?? '';
+        $decoded = base64_decode($raw, true);
+        if ($raw === '' || $decoded === false || !str_starts_with($decoded, '%PDF')) {
+            throw new \RuntimeException('A PDF statement is required');
+        }
+
+        $normalizedView = $view === 'detailed' ? 'detailed' : 'statement';
+        $label = $normalizedView === 'detailed' ? 'detailed member statement' : 'member statement';
+        $memberId = preg_replace('/\D/', '', (string) $memberNumber) ?? '';
+        $body = $memberId !== ''
+            ? "Please find attached your NSSF {$label} for member {$memberId}."
+            : "Please find attached your NSSF {$label}.";
+
+        $result = $this->notifications->sendEmail(
+            $recipient,
+            $body,
+            'MEMBER STATEMENT',
+            4,
+            'data:application/pdf;base64,'.$raw
+        );
+
+        if (!$result['success']) {
+            throw new \RuntimeException($result['message']);
+        }
+
+        return $result;
     }
 }

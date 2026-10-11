@@ -39,4 +39,31 @@ class ClerkMemberStatementController extends BaseController
             return $this->sendError('Failed to load member statement', ['error' => $e->getMessage()], 500);
         }
     }
+
+    public function email(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email'],
+            'pdf_base64' => ['required', 'string'],
+            'member_id' => ['nullable', 'string'],
+            'view' => ['nullable', 'in:statement,detailed'],
+        ]);
+
+        try {
+            $result = $this->statements->emailStatement(
+                $validated['email'],
+                $validated['pdf_base64'],
+                $validated['member_id'] ?? null,
+                $validated['view'] ?? 'statement'
+            );
+
+            return $this->sendResponse($result['data'], $result['message']);
+        } catch (\RuntimeException $e) {
+            $status = str_contains(strtolower($e->getMessage()), 'required') ? 422 : 502;
+
+            return $this->sendError($e->getMessage(), [], $status);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to email member statement', ['error' => $e->getMessage()], 500);
+        }
+    }
 }

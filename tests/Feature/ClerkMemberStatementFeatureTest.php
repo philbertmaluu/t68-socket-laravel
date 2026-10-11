@@ -100,6 +100,55 @@ class ClerkMemberStatementFeatureTest extends TestCase
         });
     }
 
+    public function test_member_statement_email_requires_authentication(): void
+    {
+        $this->postJson('/api/qms/cfms/member-statement/email', [
+            'email' => 'member@example.com',
+            'pdf_base64' => base64_encode("%PDF-1.4\n%%EOF"),
+        ])->assertUnauthorized();
+    }
+
+    public function test_member_statement_email_requires_valid_email(): void
+    {
+        Sanctum::actingAs($this->createClerk());
+
+        $this->postJson('/api/qms/cfms/member-statement/email', [
+            'email' => 'not-an-email',
+            'pdf_base64' => base64_encode("%PDF-1.4\n%%EOF"),
+        ])->assertStatus(422);
+    }
+
+    public function test_clerk_can_email_statement_pdf_via_ictms(): void
+    {
+        $pdf = base64_encode("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
+        $ictms = 'https://ictms-api.nssf.go.tz/api/send-notification';
+        config()->set('services.ictms.endpoint', $ictms);
+        Http::fake([
+            $ictms => Http::response(['success' => true, 'message' => 'sent'], 200),
+        ]);
+
+        Sanctum::actingAs($this->createClerk());
+
+        $this->postJson('/api/qms/cfms/member-statement/email', [
+            'email' => 'member@example.com',
+            'pdf_base64' => $pdf,
+            'member_id' => '48264073',
+            'view' => 'statement',
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Http::assertSent(function ($request) use ($ictms, $pdf) {
+            $payload = $request->data();
+
+            return $request->url() === $ictms
+                && ($payload['notification_type'] ?? null) === 'email'
+                && ($payload['notification_method'] ?? null) === 'instant'
+                && ($payload['notification_recipient'] ?? null) === 'member@example.com'
+                && str_contains((string) ($payload['notification_attachment'] ?? ''), $pdf);
+        });
+    }
+
     private function createClerk(): User
     {
         if (!DB::table('tenants')->where('id', 1)->exists()) {

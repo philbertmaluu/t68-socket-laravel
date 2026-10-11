@@ -48,72 +48,16 @@ class NotificationService
                 throw new Exception('Message body is required');
             }
 
-            $endpoint = config('services.ictms.endpoint');
-            $system = config('services.ictms.system', 'ICTMS');
-
-            if (empty($endpoint)) {
-                throw new Exception('ICTMS API endpoint is not configured');
-            }
-
-            $payload = [
-                'notification_type' => 'sms',
-                'notification_method' => 'instant',
-                'notification_system' => $system,
-                'notification_process' => $process,
-                'notification_recipient' => $recipient,
-                'notification_body' => $message,
-                'notification_expiry' => $expiryHours,
-                'notification_attachment' => $attachment,
-            ];
-
-            Log::info('Sending SMS notification', [
-                'recipient' => $recipient,
-                'process' => $process,
-                'endpoint' => $endpoint,
-            ]);
-
-            /** @var \Illuminate\Http\Client\Response $response */
-            $response = Http::timeout(30)
-                ->retry(3, 1000)
-                ->post($endpoint, $payload);
-
-            if ($response->successful()) {
-                $responseData = $response->json();
-
-                Log::info('SMS notification sent successfully', [
-                    'recipient' => $recipient,
-                    'process' => $process,
-                    'response' => $responseData,
-                ]);
-
-                return [
-                    'success' => true,
-                    'message' => 'SMS notification sent successfully',
-                    'data' => $responseData,
-                ];
-            }
-
-            $responseBody = $response->body();
-            $responseJson = $response->json();
-            $errorMessage = $responseJson['message'] ?? $responseBody ?? 'Unknown error';
-            $statusCode = $response->status();
-
-            Log::error('Failed to send SMS notification', [
-                'recipient' => $recipient,
-                'process' => $process,
-                'status_code' => $statusCode,
-                'error' => $errorMessage,
-                'response' => $response->body(),
-            ]);
-
-            return [
-                'success' => false,
-                'message' => "Failed to send SMS: {$errorMessage}",
-                'data' => [
-                    'status_code' => $statusCode,
-                    'error' => $errorMessage,
-                ],
-            ];
+            return $this->sendInstantNotification(
+                type: 'sms',
+                recipient: $recipient,
+                message: $message,
+                process: $process,
+                expiryHours: $expiryHours,
+                attachment: $attachment,
+                successMessage: 'SMS notification sent successfully',
+                failurePrefix: 'Failed to send SMS',
+            );
         } catch (Exception $e) {
             Log::error('Exception while sending SMS notification', [
                 'recipient' => $recipient ?? 'unknown',
@@ -128,6 +72,134 @@ class NotificationService
                 'data' => null,
             ];
         }
+    }
+
+    /**
+     * Send email notification via the same ICTMS instant send-notification endpoint.
+     *
+     * @return array{success: bool, message: string, data: array|null}
+     */
+    public function sendEmail(
+        string $recipient,
+        string $message,
+        string $process = 'MEMBER EMAIL',
+        ?int $expiryHours = 4,
+        ?string $attachment = null
+    ): array {
+        try {
+            $recipient = strtolower(trim($recipient));
+            if ($recipient === '' || !filter_var($recipient, FILTER_VALIDATE_EMAIL)) {
+                throw new Exception('A valid email address is required');
+            }
+
+            if (empty($message)) {
+                throw new Exception('Message body is required');
+            }
+
+            return $this->sendInstantNotification(
+                type: 'email',
+                recipient: $recipient,
+                message: $message,
+                process: $process,
+                expiryHours: $expiryHours,
+                attachment: $attachment,
+                successMessage: 'Email notification sent successfully',
+                failurePrefix: 'Failed to send email',
+            );
+        } catch (Exception $e) {
+            Log::error('Exception while sending email notification', [
+                'recipient' => $recipient ?? 'unknown',
+                'process' => $process,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return [
+                'success' => false,
+                'message' => "Exception: {$e->getMessage()}",
+                'data' => null,
+            ];
+        }
+    }
+
+    /**
+     * @return array{success: bool, message: string, data: array|null}
+     */
+    private function sendInstantNotification(
+        string $type,
+        string $recipient,
+        string $message,
+        string $process,
+        ?int $expiryHours,
+        ?string $attachment,
+        string $successMessage,
+        string $failurePrefix,
+    ): array {
+        $endpoint = config('services.ictms.endpoint');
+        $system = config('services.ictms.system', 'ICTMS');
+
+        if (empty($endpoint)) {
+            throw new Exception('ICTMS API endpoint is not configured');
+        }
+
+        $payload = [
+            'notification_type' => $type,
+            'notification_method' => 'instant',
+            'notification_system' => $system,
+            'notification_process' => $process,
+            'notification_recipient' => $recipient,
+            'notification_body' => $message,
+            'notification_expiry' => $expiryHours,
+            'notification_attachment' => $attachment,
+        ];
+
+        Log::info("Sending {$type} notification", [
+            'recipient' => $recipient,
+            'process' => $process,
+            'endpoint' => $endpoint,
+        ]);
+
+        /** @var \Illuminate\Http\Client\Response $response */
+        $response = Http::timeout(90)
+            ->retry(3, 1000)
+            ->post($endpoint, $payload);
+
+        if ($response->successful()) {
+            $responseData = $response->json();
+
+            Log::info("{$type} notification sent successfully", [
+                'recipient' => $recipient,
+                'process' => $process,
+                'response' => $responseData,
+            ]);
+
+            return [
+                'success' => true,
+                'message' => $successMessage,
+                'data' => $responseData,
+            ];
+        }
+
+        $responseJson = $response->json();
+        $errorMessage = $responseJson['message'] ?? $response->body() ?? 'Unknown error';
+        $statusCode = $response->status();
+
+        Log::error("Failed to send {$type} notification", [
+            'recipient' => $recipient,
+            'process' => $process,
+            'status_code' => $statusCode,
+            'error' => $errorMessage,
+            'response' => $response->body(),
+        ]);
+
+        return [
+            'success' => false,
+            'message' => "{$failurePrefix}: {$errorMessage}",
+            'data' => [
+                'status_code' => $statusCode,
+                'error' => $errorMessage,
+            ],
+        ];
     }
 
     /**
