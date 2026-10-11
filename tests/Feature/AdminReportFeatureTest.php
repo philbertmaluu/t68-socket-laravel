@@ -41,6 +41,7 @@ class AdminReportFeatureTest extends TestCase
                     'serviceTypes',
                     'clerkPerformance',
                     'officePerformance',
+                    'officeServices',
                     'offices',
                     'meta' => ['scope', 'from', 'to'],
                 ],

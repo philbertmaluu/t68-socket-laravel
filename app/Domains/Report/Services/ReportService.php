@@ -156,6 +156,7 @@ class ReportService
         $holdTickets = (clone $query)->where('status', 'hold')->count();
         $transferredTickets = (clone $query)->whereNotNull('transferred_to_counter_id')->count();
 
+        $hrpOffices = $this->hrpOfficesForFilter();
         $hourlyData = $this->buildHourlyDataPortable(clone $query);
         $peakHour = '—';
         if ($hourlyData !== []) {
@@ -176,8 +177,9 @@ class ReportService
             ],
             'serviceTypes' => $this->buildServiceTypes(clone $query, $totalTickets),
             'clerkPerformance' => $this->buildClerkPerformance(clone $query),
-            'officePerformance' => $officeId === '' ? $this->buildOfficePerformance(clone $query) : [],
-            'offices' => $this->hrpOfficesForFilter(),
+            'officePerformance' => $this->buildOfficePerformance(clone $query, $hrpOffices),
+            'officeServices' => $this->buildOfficeServices(clone $query, $hrpOffices),
+            'offices' => $hrpOffices,
             'meta' => [
                 'scope' => $officeId === '' ? 'country' : 'office',
                 'officeId' => $officeId !== '' ? $officeId : null,
@@ -621,9 +623,10 @@ class ReportService
     }
 
     /**
-     * @return list<array{officeId: string, officeName: string, tickets: int, completed: int, waiting: int, suspended: int, hold: int}>
+     * @param  list<array{id: string, name: string, region_id: string, region_name: string}>  $hrpOffices
+     * @return list<array{officeId: string, officeName: string, regionName: string, tickets: int, completed: int, waiting: int, suspended: int, hold: int}>
      */
-    private function buildOfficePerformance($query): array
+    private function buildOfficePerformance($query, array $hrpOffices = []): array
     {
         $rows = (clone $query)
             ->selectRaw("office_id, COUNT(*) as ticket_count, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count, SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END) as waiting_count, SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) as suspended_count, SUM(CASE WHEN status = 'hold' THEN 1 ELSE 0 END) as hold_count")
@@ -631,9 +634,9 @@ class ReportService
             ->groupBy('office_id')
             ->get();
 
-        $names = [];
-        foreach ($this->hrpOfficesForFilter() as $office) {
-            $names[(string) $office['id']] = (string) $office['name'];
+        $byId = [];
+        foreach ($hrpOffices as $office) {
+            $byId[(string) $office['id']] = $office;
         }
 
         $result = [];
@@ -642,9 +645,11 @@ class ReportService
             if ($id === '') {
                 continue;
             }
+            $hrp = $byId[$id] ?? null;
             $result[] = [
                 'officeId' => $id,
-                'officeName' => $names[$id] ?? $id,
+                'officeName' => (string) ($hrp['name'] ?? $id),
+                'regionName' => (string) ($hrp['region_name'] ?? ''),
                 'tickets' => (int) $row->ticket_count,
                 'completed' => (int) $row->completed_count,
                 'waiting' => (int) $row->waiting_count,
@@ -653,7 +658,72 @@ class ReportService
             ];
         }
 
-        usort($result, static fn ($a, $b) => $b['tickets'] <=> $a['tickets']);
+        usort($result, static function (array $a, array $b): int {
+            $region = strcmp($a['regionName'], $b['regionName']);
+            if ($region !== 0) {
+                return $region;
+            }
+
+            return $b['tickets'] <=> $a['tickets'];
+        });
+
+        return $result;
+    }
+
+    /**
+     * @param  list<array{id: string, name: string, region_id: string, region_name: string}>  $hrpOffices
+     * @return list<array{officeId: string, officeName: string, regionName: string, services: list<array{type: string, count: int}>, total: int}>
+     */
+    private function buildOfficeServices($query, array $hrpOffices = []): array
+    {
+        $rows = (clone $query)
+            ->selectRaw('office_id, service_type, COUNT(*) as ticket_count')
+            ->whereNotNull('office_id')
+            ->groupBy('office_id', 'service_type')
+            ->get();
+
+        $byId = [];
+        foreach ($hrpOffices as $office) {
+            $byId[(string) $office['id']] = $office;
+        }
+
+        $grouped = [];
+        foreach ($rows as $row) {
+            $officeId = (string) ($row->office_id ?? '');
+            if ($officeId === '') {
+                continue;
+            }
+            $type = trim((string) ($row->service_type ?? ''));
+            if ($type === '') {
+                $type = 'Unknown';
+            }
+            if (!isset($grouped[$officeId])) {
+                $hrp = $byId[$officeId] ?? null;
+                $grouped[$officeId] = [
+                    'officeId' => $officeId,
+                    'officeName' => (string) ($hrp['name'] ?? $officeId),
+                    'regionName' => (string) ($hrp['region_name'] ?? ''),
+                    'services' => [],
+                    'total' => 0,
+                ];
+            }
+            $count = (int) $row->ticket_count;
+            $grouped[$officeId]['services'][] = [
+                'type' => $type,
+                'count' => $count,
+            ];
+            $grouped[$officeId]['total'] += $count;
+        }
+
+        $result = array_values($grouped);
+        usort($result, static function (array $a, array $b): int {
+            $region = strcmp($a['regionName'], $b['regionName']);
+            if ($region !== 0) {
+                return $region;
+            }
+
+            return strcmp($a['officeName'], $b['officeName']);
+        });
 
         return $result;
     }
