@@ -9,4 +9,5 @@ Route::get('reports/service-mix', [ReportController::class, 'serviceMix'])->name
 Route::get('reports/hourly-activity', [ReportController::class, 'hourlyActivity'])->name('reports.hourly-activity');
 Route::get('reports/counter-performance', [ReportController::class, 'counterPerformance'])->name('reports.counter-performance');
 Route::get('reports/clerk-performance', [ReportController::class, 'clerkPerformance'])->name('reports.clerk-performance');
+Route::get('reports/admin', [ReportController::class, 'admin'])->name('reports.admin');
 Route::get('reports/tickets', [ReportController::class, 'tickets'])->name('reports.tickets');

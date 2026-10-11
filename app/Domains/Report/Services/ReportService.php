@@ -137,6 +137,57 @@ class ReportService
     }
 
     /**
+     * National or per-office report for queue administrators.
+     *
+     * @return array<string, mixed>
+     */
+    public function adminReport(string $from, string $to, ?string $officeId = null): array
+    {
+        $this->requireAuth();
+        $officeId = trim((string) $officeId);
+
+        $query = Ticket::query()->whereBetween('created_at', [$from.' 00:00:00', $to.' 23:59:59']);
+        if ($officeId !== '') {
+            $query->where('office_id', $officeId);
+        }
+
+        $totalTickets = (clone $query)->count();
+        $completedTickets = (clone $query)->where('status', 'completed')->count();
+        $skippedTickets = (clone $query)->whereIn('status', ['skipped', 'no_show', 'cancelled'])->count();
+        $transferredTickets = (clone $query)->whereNotNull('transferred_to_counter_id')->count();
+
+        $hourlyData = $this->buildHourlyDataPortable(clone $query);
+        $peakHour = '—';
+        if ($hourlyData !== []) {
+            $peak = collect($hourlyData)->sortByDesc('tickets')->first();
+            $peakHour = (string) ($peak['hour'] ?? '—');
+        }
+
+        return [
+            'reportData' => [
+                'totalTickets' => $totalTickets,
+                'completedTickets' => $completedTickets,
+                'skippedTickets' => $skippedTickets,
+                'transferredTickets' => $transferredTickets,
+                'averageWaitTime' => $this->averageWaitMinutes(clone $query),
+                'averageServiceTime' => $this->averageServiceMinutes(clone $query),
+                'peakHour' => $peakHour,
+                'busiestDay' => $this->busiestDayPortable(clone $query),
+            ],
+            'serviceTypes' => $this->buildServiceTypes(clone $query, $totalTickets),
+            'clerkPerformance' => $this->buildClerkPerformance(clone $query),
+            'officePerformance' => $officeId === '' ? $this->buildOfficePerformance(clone $query) : [],
+            'offices' => $this->hrpOfficesForFilter(),
+            'meta' => [
+                'scope' => $officeId === '' ? 'country' : 'office',
+                'officeId' => $officeId !== '' ? $officeId : null,
+                'from' => $from,
+                'to' => $to,
+            ],
+        ];
+    }
+
+    /**
      * Ticket rows for report drill-down (matches ServedTicket shape on the frontend).
      *
      * @param array{date?: string|null, hour?: string|null, serviceType?: string|null, counterName?: string|null, clerkName?: string|null, limit?: int|null} $filters
@@ -521,5 +572,115 @@ class ReportService
         usort($result, static fn ($a, $b) => $b['ticketsServed'] <=> $a['ticketsServed']);
 
         return $result;
+    }
+
+    /**
+     * @return list<array{hour: string, tickets: int}>
+     */
+    private function buildHourlyDataPortable($query): array
+    {
+        $rows = (clone $query)->get(['created_at']);
+        $byHour = [];
+        foreach ($rows as $row) {
+            if (!$row->created_at) {
+                continue;
+            }
+            $hour = (int) $row->created_at->format('G');
+            $byHour[$hour] = ($byHour[$hour] ?? 0) + 1;
+        }
+
+        $result = [];
+        for ($hour = 8; $hour <= 17; $hour++) {
+            $result[] = [
+                'hour' => str_pad((string) $hour, 2, '0', STR_PAD_LEFT).':00',
+                'tickets' => (int) ($byHour[$hour] ?? 0),
+            ];
+        }
+
+        return $result;
+    }
+
+    private function busiestDayPortable($query): string
+    {
+        $rows = (clone $query)->get(['created_at']);
+        $byDay = [];
+        foreach ($rows as $row) {
+            if (!$row->created_at) {
+                continue;
+            }
+            $date = $row->created_at->format('Y-m-d');
+            $byDay[$date] = ($byDay[$date] ?? 0) + 1;
+        }
+        if ($byDay === []) {
+            return '—';
+        }
+        arsort($byDay);
+        $date = (string) array_key_first($byDay);
+
+        return \Carbon\Carbon::parse($date)->format('M d, Y');
+    }
+
+    /**
+     * @return list<array{officeId: string, officeName: string, tickets: int, completed: int, waiting: int}>
+     */
+    private function buildOfficePerformance($query): array
+    {
+        $rows = (clone $query)
+            ->selectRaw("office_id, COUNT(*) as ticket_count, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_count, SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END) as waiting_count")
+            ->whereNotNull('office_id')
+            ->groupBy('office_id')
+            ->get();
+
+        $names = [];
+        foreach ($this->hrpOfficesForFilter() as $office) {
+            $names[(string) $office['id']] = (string) $office['name'];
+        }
+
+        $result = [];
+        foreach ($rows as $row) {
+            $id = (string) ($row->office_id ?? '');
+            if ($id === '') {
+                continue;
+            }
+            $result[] = [
+                'officeId' => $id,
+                'officeName' => $names[$id] ?? $id,
+                'tickets' => (int) $row->ticket_count,
+                'completed' => (int) $row->completed_count,
+                'waiting' => (int) $row->waiting_count,
+            ];
+        }
+
+        usort($result, static fn ($a, $b) => $b['tickets'] <=> $a['tickets']);
+
+        return $result;
+    }
+
+    /**
+     * @return list<array{id: string, name: string, region_id: string, region_name: string}>
+     */
+    private function hrpOfficesForFilter(): array
+    {
+        try {
+            $regions = DB::table('hrpd.region')
+                ->select(['region_id', 'region_name'])
+                ->get()
+                ->mapWithKeys(fn ($row) => [(string) $row->region_id => (string) ($row->region_name ?? '')]);
+
+            return DB::table('hrpd.office')
+                ->select(['office_id', 'office_name', 'region_id'])
+                ->orderBy('office_name')
+                ->get()
+                ->map(fn ($row) => [
+                    'id' => (string) $row->office_id,
+                    'name' => (string) $row->office_name,
+                    'region_id' => (string) $row->region_id,
+                    'region_name' => (string) ($regions[(string) $row->region_id] ?? ''),
+                ])
+                ->values()
+                ->all();
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 }

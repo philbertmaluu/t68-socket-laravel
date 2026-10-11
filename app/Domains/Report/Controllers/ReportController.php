@@ -65,6 +65,26 @@ class ReportController extends BaseController
     }
 
     /**
+     * GET /api/qms/reports/admin?from=&to=&office_id=
+     */
+    public function admin(Request $request): JsonResponse
+    {
+        try {
+            [$from, $to, $error] = $this->resolveRange($request);
+            if ($error !== null) {
+                return $this->sendError($error, [], 422);
+            }
+
+            $officeId = trim((string) $request->query('office_id', ''));
+            $result = $this->service->adminReport($from, $to, $officeId !== '' ? $officeId : null);
+
+            return $this->sendResponse($result, 'Admin report retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to retrieve admin report', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * GET /api/qms/reports/tickets?from=&to=&date=&hour=&serviceType=&counterName=&clerkName=&limit=
      */
     public function tickets(Request $request): JsonResponse
