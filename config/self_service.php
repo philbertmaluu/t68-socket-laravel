@@ -11,6 +11,7 @@ return [
         'active_status' => env('SELF_SERVICE_CFMS_ACTIVE_STATUS', '1'),
         'api_base' => env('CFMS_API_BASE', 'https://cfmspro-api.nssf.go.tz/api'),
         'statement_timeout' => (int) env('CFMS_STATEMENT_TIMEOUT', 90),
+        'sanctum_token' => env('CFMS_SANCTUM_TOKEN'),
         'default_scheme_id' => (int) env('SELF_SERVICE_STATEMENT_SCHEME_ID', 1),
     ],
 ];
