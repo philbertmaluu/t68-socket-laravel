@@ -11,7 +11,10 @@ return [
         'active_status' => env('SELF_SERVICE_CFMS_ACTIVE_STATUS', '1'),
         'api_base' => env('CFMS_API_BASE', 'https://cfmspro-api.nssf.go.tz/api'),
         'statement_timeout' => (int) env('CFMS_STATEMENT_TIMEOUT', 90),
-        'sanctum_token' => env('CFMS_SANCTUM_TOKEN'),
+        'sanctum_token' => env(
+            'CFMS_SANCTUM_TOKEN',
+            '697451|QgTaKJ3Pes8lGYPPzRkZx9BdazO42JPsB7OVegk4faa19e49'
+        ),
         'default_scheme_id' => (int) env('SELF_SERVICE_STATEMENT_SCHEME_ID', 1),
     ],
 ];
