@@ -190,6 +190,99 @@ class ReportService
     }
 
     /**
+     * @return array{format: string, filename: string, content: string, mime: string}
+     */
+    public function exportAdminReport(
+        string $from,
+        string $to,
+        ?string $officeId,
+        string $format,
+        string $view
+    ): array {
+        $payload = $this->adminReport($from, $to, $officeId);
+        $officeId = trim((string) $officeId);
+        $scopeName = 'Whole country';
+        if ($officeId !== '') {
+            foreach ($payload['offices'] as $office) {
+                if ((string) ($office['id'] ?? '') === $officeId) {
+                    $scopeName = (string) ($office['name'] ?? $officeId);
+                    break;
+                }
+            }
+            if ($scopeName === 'Whole country') {
+                $scopeName = $officeId;
+            }
+        }
+
+        $viewTitles = [
+            'services' => 'Per services',
+            'office' => 'Per office',
+            'officer' => 'Per officer',
+        ];
+        $viewTitle = $viewTitles[$view] ?? 'Per services';
+
+        $user = Auth::guard('sanctum')->user();
+        $generatedBy = trim((string) ($user?->name ?? $user?->email ?? 'System'));
+        if ($generatedBy === '') {
+            $generatedBy = 'System';
+        }
+
+        $reportDate = \Carbon\Carbon::parse($from)->format('F j, Y')
+            .' – '
+            .\Carbon\Carbon::parse($to)->format('F j, Y');
+        $dateKey = str_replace('-', '', $from).'-'.str_replace('-', '', $to);
+        $safeScope = preg_replace('/[^A-Za-z0-9_-]+/', '-', $scopeName) ?: 'country';
+        $serviceTypes = $this->uniqueServiceTypes($payload['officeServices'] ?? []);
+
+        if ($format === 'excel') {
+            $csv = $this->buildAdminReportCsv($payload, $view, $viewTitle, $scopeName, $reportDate, $generatedBy, $serviceTypes);
+
+            return [
+                'format' => 'excel',
+                'filename' => "qms-admin-{$view}-{$safeScope}-{$dateKey}.csv",
+                'content' => $csv,
+                'mime' => 'text/csv; charset=UTF-8',
+            ];
+        }
+
+        $logoFile = public_path('images/nssf-logo.png');
+        $logoPath = null;
+        if (is_file($logoFile)) {
+            $logoPath = 'data:image/png;base64,'.base64_encode((string) file_get_contents($logoFile));
+        }
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.admin.report', [
+            'logoPath' => $logoPath,
+            'view' => $view,
+            'viewTitle' => $viewTitle,
+            'scopeName' => $scopeName,
+            'reportDate' => $reportDate,
+            'dateKey' => $dateKey,
+            'generatedAt' => now()->format('d M Y H:i'),
+            'generatedBy' => $generatedBy,
+            'reportData' => $payload['reportData'] ?? [],
+            'officeServices' => $payload['officeServices'] ?? [],
+            'officePerformance' => $payload['officePerformance'] ?? [],
+            'clerkPerformance' => $payload['clerkPerformance'] ?? [],
+            'serviceTypes' => $serviceTypes,
+        ])
+            ->setPaper('a4', 'landscape')
+            ->setOptions([
+                'isHtml5ParserEnabled' => true,
+                'isRemoteEnabled' => true,
+                'defaultFont' => 'DejaVu Sans',
+                'dpi' => 96,
+            ]);
+
+        return [
+            'format' => 'pdf',
+            'filename' => "qms-admin-{$view}-{$safeScope}-{$dateKey}.pdf",
+            'content' => $pdf->output(),
+            'mime' => 'application/pdf',
+        ];
+    }
+
+    /**
      * Ticket rows for report drill-down (matches ServedTicket shape on the frontend).
      *
      * @param array{date?: string|null, hour?: string|null, serviceType?: string|null, counterName?: string|null, clerkName?: string|null, limit?: int|null} $filters
@@ -726,6 +819,112 @@ class ReportService
         });
 
         return $result;
+    }
+
+    /**
+     * @param  list<array{services?: list<array{type: string, count: int}>}>  $officeServices
+     * @return list<string>
+     */
+    private function uniqueServiceTypes(array $officeServices): array
+    {
+        $types = [];
+        foreach ($officeServices as $office) {
+            foreach ($office['services'] ?? [] as $service) {
+                $type = trim((string) ($service['type'] ?? ''));
+                if ($type !== '') {
+                    $types[$type] = true;
+                }
+            }
+        }
+        $names = array_keys($types);
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  list<string>  $serviceTypes
+     */
+    private function buildAdminReportCsv(
+        array $payload,
+        string $view,
+        string $viewTitle,
+        string $scopeName,
+        string $reportDate,
+        string $generatedBy,
+        array $serviceTypes
+    ): string {
+        $handle = fopen('php://temp', 'r+');
+        fwrite($handle, "\xEF\xBB\xBF");
+        fputcsv($handle, ['National Social Security Fund']);
+        fputcsv($handle, ['Queue Management System — Country Reports']);
+        fputcsv($handle, ['View', $viewTitle]);
+        fputcsv($handle, ['Scope', $scopeName]);
+        fputcsv($handle, ['Period', $reportDate]);
+        fputcsv($handle, ['Generated by', $generatedBy]);
+        fputcsv($handle, ['Generated at', now()->format('d M Y H:i')]);
+        fputcsv($handle, []);
+
+        $summary = $payload['reportData'] ?? [];
+        fputcsv($handle, ['Summary']);
+        fputcsv($handle, ['Total tickets', (int) ($summary['totalTickets'] ?? 0)]);
+        fputcsv($handle, ['Completed', (int) ($summary['completedTickets'] ?? 0)]);
+        fputcsv($handle, ['Hold', (int) ($summary['holdTickets'] ?? 0)]);
+        fputcsv($handle, ['Transferred', (int) ($summary['transferredTickets'] ?? 0)]);
+        fputcsv($handle, ['Average wait (min)', $summary['averageWaitTime'] ?? 0]);
+        fputcsv($handle, ['Average service (min)', $summary['averageServiceTime'] ?? 0]);
+        fputcsv($handle, []);
+
+        if ($view === 'office') {
+            fputcsv($handle, ['Region', 'Office', 'Tickets', 'Completed', 'Waiting', 'Suspended', 'Hold']);
+            foreach ($payload['officePerformance'] ?? [] as $row) {
+                fputcsv($handle, [
+                    $row['regionName'] ?? '',
+                    $row['officeName'] ?? '',
+                    (int) ($row['tickets'] ?? 0),
+                    (int) ($row['completed'] ?? 0),
+                    (int) ($row['waiting'] ?? 0),
+                    (int) ($row['suspended'] ?? 0),
+                    (int) ($row['hold'] ?? 0),
+                ]);
+            }
+        } elseif ($view === 'officer') {
+            fputcsv($handle, ['Officer', 'Tickets served', 'Avg service time (min)', 'Completion rate (%)']);
+            foreach ($payload['clerkPerformance'] ?? [] as $row) {
+                fputcsv($handle, [
+                    $row['name'] ?? '',
+                    (int) ($row['ticketsServed'] ?? 0),
+                    $row['avgServiceTime'] ?? 0,
+                    $row['completionRate'] ?? 0,
+                ]);
+            }
+        } else {
+            $header = array_merge(['Region', 'Office'], $serviceTypes, ['Total']);
+            fputcsv($handle, $header);
+            foreach ($payload['officeServices'] ?? [] as $office) {
+                $counts = [];
+                foreach ($office['services'] ?? [] as $service) {
+                    $type = (string) ($service['type'] ?? '');
+                    $counts[$type] = (int) ($service['count'] ?? 0);
+                }
+                $line = [
+                    $office['regionName'] ?? '',
+                    $office['officeName'] ?? '',
+                ];
+                foreach ($serviceTypes as $type) {
+                    $line[] = (int) ($counts[$type] ?? 0);
+                }
+                $line[] = (int) ($office['total'] ?? 0);
+                fputcsv($handle, $line);
+            }
+        }
+
+        rewind($handle);
+        $csv = stream_get_contents($handle) ?: '';
+        fclose($handle);
+
+        return $csv;
     }
 
     /**

@@ -10,4 +10,5 @@ Route::get('reports/hourly-activity', [ReportController::class, 'hourlyActivity'
 Route::get('reports/counter-performance', [ReportController::class, 'counterPerformance'])->name('reports.counter-performance');
 Route::get('reports/clerk-performance', [ReportController::class, 'clerkPerformance'])->name('reports.clerk-performance');
 Route::get('reports/admin', [ReportController::class, 'admin'])->name('reports.admin');
+Route::get('reports/admin/export', [ReportController::class, 'exportAdmin'])->name('reports.admin.export');
 Route::get('reports/tickets', [ReportController::class, 'tickets'])->name('reports.tickets');

@@ -85,6 +85,46 @@ class ReportController extends BaseController
     }
 
     /**
+     * GET /api/qms/reports/admin/export?from=&to=&office_id=&format=pdf|excel&view=services|office|officer
+     */
+    public function exportAdmin(Request $request)
+    {
+        try {
+            [$from, $to, $error] = $this->resolveRange($request);
+            if ($error !== null) {
+                return $this->sendError($error, [], 422);
+            }
+
+            $format = strtolower(trim((string) $request->query('format', 'pdf')));
+            if (!in_array($format, ['pdf', 'excel'], true)) {
+                return $this->sendError('Invalid format. Use pdf or excel.', [], 422);
+            }
+
+            $view = strtolower(trim((string) $request->query('view', 'services')));
+            if (!in_array($view, ['services', 'office', 'officer'], true)) {
+                return $this->sendError('Invalid view. Use services, office, or officer.', [], 422);
+            }
+
+            $officeId = trim((string) $request->query('office_id', ''));
+            $export = $this->service->exportAdminReport(
+                $from,
+                $to,
+                $officeId !== '' ? $officeId : null,
+                $format,
+                $view
+            );
+
+            return response($export['content'], 200, [
+                'Content-Type' => $export['mime'],
+                'Content-Disposition' => 'attachment; filename="' . $export['filename'] . '"',
+                'Cache-Control' => 'no-store, no-cache, must-revalidate',
+            ]);
+        } catch (\Exception $e) {
+            return $this->sendError('Failed to export admin report', ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * GET /api/qms/reports/tickets?from=&to=&date=&hour=&serviceType=&counterName=&clerkName=&limit=
      */
     public function tickets(Request $request): JsonResponse
