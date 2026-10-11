@@ -13,7 +13,7 @@ return [
         'statement_timeout' => (int) env('CFMS_STATEMENT_TIMEOUT', 90),
         'sanctum_token' => env(
             'CFMS_SANCTUM_TOKEN',
-            '9433439|Q7efN44Qi9kneY6Yrh8s2G1kDWL0iMBqcwA7PPum1bfc9f83'
+            '99434093|4wOHLrpW584YlzgQQ7LHN5amKyCXjFz1uQ9udTJIfd752242'
         ),
         'default_scheme_id' => (int) env('SELF_SERVICE_STATEMENT_SCHEME_ID', 1),
     ],

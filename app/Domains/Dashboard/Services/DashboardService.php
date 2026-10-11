@@ -5,10 +5,13 @@ namespace App\Domains\Dashboard\Services;
 use App\Domains\Counter\Models\Counter;
 use App\Domains\Authentication\Models\User;
 use App\Domains\Dashboard\Enums\Dashboard;
+use App\Domains\Device\Models\Device;
 use App\Domains\Ticket\Models\Ticket;
 use App\Traits\UserOfficeTrait;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DashboardService
 {
@@ -65,7 +68,56 @@ class DashboardService
 
     public function adminDashboard(): array
     {
-        return $this->buildPlaceholderPayload(Dashboard::ADMIN);
+        $user = Auth::guard('sanctum')->user();
+        if (!$user) {
+            throw new AuthenticationException('User not authenticated');
+        }
+
+        [$hrpRegions, $hrpOffices] = $this->loadHrpRegionsAndOffices();
+        $officeIds = array_values(array_unique(array_map(
+            static fn (array $office): string => (string) $office['id'],
+            $hrpOffices
+        )));
+
+        $ticketsByOffice = $this->adminTicketsByOffice($officeIds);
+        $waitByOffice = $this->adminWaitMinutesByOffice($officeIds);
+        $countersByOffice = $this->adminCountersByOffice($officeIds);
+        $devicesByOffice = $this->adminDevicesByOffice($officeIds);
+
+        $officesByRegion = [];
+        foreach ($hrpOffices as $office) {
+            $officesByRegion[(string) $office['region_id']][] = $office;
+        }
+
+        $regions = [];
+        foreach ($hrpRegions as $region) {
+            $regionId = (string) $region['id'];
+            $regionOffices = $officesByRegion[$regionId] ?? [];
+            $mappedOffices = [];
+            foreach ($regionOffices as $office) {
+                $mappedOffices[] = $this->mapAdminOffice(
+                    $office,
+                    $ticketsByOffice[(string) $office['id']] ?? ['waiting' => 0, 'serving' => 0, 'queues' => 0],
+                    $waitByOffice[(string) $office['id']] ?? 0,
+                    $countersByOffice[(string) $office['id']] ?? ['total' => 0, 'open' => 0],
+                    $devicesByOffice[(string) $office['id']] ?? [
+                        'kiosk' => ['total' => 0, 'online' => 0],
+                        'tv' => ['total' => 0, 'online' => 0],
+                    ],
+                );
+            }
+
+            $regions[] = $this->mapAdminRegion($region, $mappedOffices);
+        }
+
+        return [
+            'regions' => $regions,
+            'meta' => [
+                'dashboard' => Dashboard::ADMIN->value,
+                'generatedAt' => now()->toIso8601String(),
+                'source' => $hrpRegions === [] ? 'qms-without-hrp' : 'database',
+            ],
+        ];
     }
 
     public function tenantDashboard(): array
@@ -475,6 +527,329 @@ class DashboardService
                 'notes' => 'Dashboard service scaffold is ready. Replace placeholder values with real aggregates.',
             ],
         ];
+    }
+
+    /**
+     * @return array{0: list<array{id: string, name: string}>, 1: list<array{id: string, name: string, region_id: string, office_code: string|null}>}
+     */
+    private function loadHrpRegionsAndOffices(): array
+    {
+        try {
+            $regions = DB::table('hrpd.region')
+                ->select(['region_id as id', 'region_name as name'])
+                ->orderBy('region_name')
+                ->get()
+                ->map(fn ($row) => [
+                    'id' => (string) $row->id,
+                    'name' => (string) $row->name,
+                ])
+                ->values()
+                ->all();
+
+            $offices = DB::table('hrpd.office')
+                ->select(['office_id as id', 'office_name as name', 'region_id', 'office_code'])
+                ->orderBy('office_name')
+                ->get()
+                ->map(fn ($row) => [
+                    'id' => (string) $row->id,
+                    'name' => (string) $row->name,
+                    'region_id' => (string) $row->region_id,
+                    'office_code' => $row->office_code !== null ? (string) $row->office_code : null,
+                ])
+                ->values()
+                ->all();
+
+            return [$regions, $offices];
+        } catch (\Throwable $e) {
+            Log::warning('Admin dashboard HRP lookup failed', ['error' => $e->getMessage()]);
+
+            return [[], []];
+        }
+    }
+
+    /**
+     * @param  list<string>  $officeIds
+     * @return array<string, array{waiting: int, serving: int, queues: int}>
+     */
+    private function adminTicketsByOffice(array $officeIds): array
+    {
+        if ($officeIds === []) {
+            return [];
+        }
+
+        $rows = Ticket::query()
+            ->whereIn('office_id', $officeIds)
+            ->whereIn('status', ['waiting', 'called', 'serving', 'paused'])
+            ->get(['office_id', 'status', 'service_type']);
+
+        $out = [];
+        $queueKeys = [];
+        foreach ($rows as $row) {
+            $officeId = (string) ($row->office_id ?? '');
+            if ($officeId === '') {
+                continue;
+            }
+            if (!isset($out[$officeId])) {
+                $out[$officeId] = ['waiting' => 0, 'serving' => 0, 'queues' => 0];
+            }
+            $status = strtolower((string) $row->status);
+            if ($status === 'waiting') {
+                $out[$officeId]['waiting']++;
+            }
+            if (in_array($status, ['called', 'serving', 'paused'], true)) {
+                $out[$officeId]['serving']++;
+            }
+            $service = trim((string) ($row->service_type ?? ''));
+            if ($service !== '' && $status === 'waiting') {
+                $queueKeys[$officeId][$service] = true;
+            }
+        }
+
+        foreach ($queueKeys as $officeId => $services) {
+            $out[$officeId]['queues'] = count($services);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $officeIds
+     * @return array<string, int>
+     */
+    private function adminWaitMinutesByOffice(array $officeIds): array
+    {
+        if ($officeIds === []) {
+            return [];
+        }
+
+        $samples = Ticket::query()
+            ->whereIn('office_id', $officeIds)
+            ->whereNotNull('created_at')
+            ->whereNotNull('called_at')
+            ->where('created_at', '>=', now()->startOfDay())
+            ->get(['office_id', 'created_at', 'called_at']);
+
+        $totals = [];
+        $counts = [];
+        foreach ($samples as $ticket) {
+            $officeId = (string) ($ticket->office_id ?? '');
+            if ($officeId === '' || !$ticket->created_at || !$ticket->called_at) {
+                continue;
+            }
+            $diff = $ticket->created_at->diffInMinutes($ticket->called_at, false);
+            if ($diff < 0) {
+                continue;
+            }
+            $totals[$officeId] = ($totals[$officeId] ?? 0) + $diff;
+            $counts[$officeId] = ($counts[$officeId] ?? 0) + 1;
+        }
+
+        $averages = [];
+        foreach ($totals as $officeId => $total) {
+            $averages[$officeId] = (int) round($total / max(1, $counts[$officeId] ?? 1));
+        }
+
+        return $averages;
+    }
+
+    /**
+     * @param  list<string>  $officeIds
+     * @return array<string, array{total: int, open: int}>
+     */
+    private function adminCountersByOffice(array $officeIds): array
+    {
+        if ($officeIds === []) {
+            return [];
+        }
+
+        $rows = Counter::query()
+            ->whereIn('office_id', $officeIds)
+            ->get(['office_id', 'status']);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $officeId = (string) ($row->office_id ?? '');
+            if ($officeId === '') {
+                continue;
+            }
+            if (!isset($out[$officeId])) {
+                $out[$officeId] = ['total' => 0, 'open' => 0];
+            }
+            $out[$officeId]['total']++;
+            if (strtoupper((string) $row->status) === 'ACTIVE') {
+                $out[$officeId]['open']++;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<string>  $officeIds
+     * @return array<string, array{kiosk: array{total: int, online: int}, tv: array{total: int, online: int}>}
+     */
+    private function adminDevicesByOffice(array $officeIds): array
+    {
+        if ($officeIds === []) {
+            return [];
+        }
+
+        $rows = Device::query()
+            ->whereIn('office_id', $officeIds)
+            ->whereIn('type', [Device::TYPE_KIOSK, Device::TYPE_TV])
+            ->get(['office_id', 'type', 'status']);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $officeId = (string) ($row->office_id ?? '');
+            if ($officeId === '') {
+                continue;
+            }
+            if (!isset($out[$officeId])) {
+                $out[$officeId] = [
+                    'kiosk' => ['total' => 0, 'online' => 0],
+                    'tv' => ['total' => 0, 'online' => 0],
+                ];
+            }
+            $bucket = strtoupper((string) $row->type) === Device::TYPE_TV ? 'tv' : 'kiosk';
+            $out[$officeId][$bucket]['total']++;
+            if (strtolower((string) $row->status) === Device::STATUS_ONLINE) {
+                $out[$officeId][$bucket]['online']++;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array{id: string, name: string, region_id: string, office_code: string|null}  $office
+     * @param  array{waiting: int, serving: int, queues: int}  $tickets
+     * @param  array{total: int, open: int}  $counters
+     * @param  array{kiosk: array{total: int, online: int}, tv: array{total: int, online: int}}  $devices
+     * @return array<string, mixed>
+     */
+    private function mapAdminOffice(array $office, array $tickets, int $avgWait, array $counters, array $devices): array
+    {
+        $kioskOffline = max(0, $devices['kiosk']['total'] - $devices['kiosk']['online']);
+        $tvOffline = max(0, $devices['tv']['total'] - $devices['tv']['online']);
+        $desktopOffline = max(0, $counters['total'] - $counters['open']);
+
+        return [
+            'id' => $office['id'],
+            'name' => $office['name'],
+            'address' => $office['office_code'] ?: $office['name'],
+            'activeQueues' => $tickets['queues'],
+            'openCounters' => $counters['open'],
+            'averageWaitingTime' => $avgWait,
+            'membersWaiting' => $tickets['waiting'],
+            'membersBeingServed' => $tickets['serving'],
+            'deviceStatus' => [
+                'kioskMachines' => [
+                    'total' => $devices['kiosk']['total'],
+                    'online' => $devices['kiosk']['online'],
+                    'offline' => $kioskOffline,
+                ],
+                'tvDisplays' => [
+                    'total' => $devices['tv']['total'],
+                    'online' => $devices['tv']['online'],
+                    'offline' => $tvOffline,
+                ],
+                'desktopApps' => [
+                    'total' => $counters['total'],
+                    'online' => $counters['open'],
+                    'offline' => $desktopOffline,
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @param  array{id: string, name: string}  $region
+     * @param  list<array<string, mixed>>  $offices
+     * @return array<string, mixed>
+     */
+    private function mapAdminRegion(array $region, array $offices): array
+    {
+        $waiting = 0;
+        $serving = 0;
+        $queues = 0;
+        $openCounters = 0;
+        $waitWeighted = 0;
+        $waitOffices = 0;
+        $kiosk = ['total' => 0, 'online' => 0, 'offline' => 0];
+        $tv = ['total' => 0, 'online' => 0, 'offline' => 0];
+        $desktop = ['total' => 0, 'online' => 0, 'offline' => 0];
+
+        foreach ($offices as $office) {
+            $waiting += (int) $office['membersWaiting'];
+            $serving += (int) $office['membersBeingServed'];
+            $queues += (int) $office['activeQueues'];
+            $openCounters += (int) $office['openCounters'];
+            if ((int) $office['averageWaitingTime'] > 0) {
+                $waitWeighted += (int) $office['averageWaitingTime'];
+                $waitOffices++;
+            }
+            foreach (['kioskMachines' => &$kiosk, 'tvDisplays' => &$tv, 'desktopApps' => &$desktop] as $key => &$bucket) {
+                $bucket['total'] += (int) $office['deviceStatus'][$key]['total'];
+                $bucket['online'] += (int) $office['deviceStatus'][$key]['online'];
+                $bucket['offline'] += (int) $office['deviceStatus'][$key]['offline'];
+            }
+            unset($bucket);
+        }
+
+        $avgWait = $waitOffices > 0 ? (int) round($waitWeighted / $waitOffices) : 0;
+
+        return [
+            'id' => $region['id'],
+            'slug' => $this->regionMapSlug((string) $region['name']),
+            'name' => $region['name'],
+            'status' => $this->queueLoadStatus($waiting, $avgWait),
+            'activeQueues' => $queues,
+            'totalOffices' => count($offices),
+            'openCounters' => $openCounters,
+            'averageWaitingTime' => $avgWait,
+            'totalMembersWaiting' => $waiting,
+            'membersBeingServed' => $serving,
+            'deviceStatus' => [
+                'kioskMachines' => $kiosk,
+                'tvDisplays' => $tv,
+                'desktopApps' => $desktop,
+            ],
+            'offices' => $offices,
+        ];
+    }
+
+    private function queueLoadStatus(int $waiting, int $avgWaitMinutes): string
+    {
+        if ($waiting >= 40 || $avgWaitMinutes >= 20) {
+            return 'high';
+        }
+        if ($waiting >= 10 || $avgWaitMinutes >= 10) {
+            return 'medium';
+        }
+
+        return 'low';
+    }
+
+    private function regionMapSlug(string $name): string
+    {
+        $normalized = strtolower(trim(preg_replace('/\s+/', ' ', $name) ?? $name));
+        $aliases = [
+            'dar es salaam' => 'dar-es-salaam',
+            'dar-es-salaam' => 'dar-es-salaam',
+            'coast' => 'pwani',
+            'pwani region' => 'pwani',
+            'mjini magharibi' => 'zanzibar',
+            'unguja' => 'zanzibar',
+            'zanzibar urban/west' => 'zanzibar',
+            'zanzibar urban' => 'zanzibar',
+            'kaskazini unguja' => 'kaskazini-unguja',
+            'kusini unguja' => 'kusini-unguja',
+            'kaskazini pemba' => 'kaskazini-pemba',
+            'kusini pemba' => 'kusini-pemba',
+        ];
+
+        return $aliases[$normalized] ?? trim((string) preg_replace('/[^a-z0-9]+/', '-', $normalized), '-');
     }
 
     private function calculateAverageWaitTimeMinutes($ticketsQuery): int
