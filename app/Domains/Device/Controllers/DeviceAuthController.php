@@ -8,6 +8,7 @@ use App\Domains\Device\Services\DeviceService;
 use App\Http\Controllers\BaseController;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class DeviceAuthController extends BaseController
 {
@@ -21,6 +22,17 @@ class DeviceAuthController extends BaseController
      */
     public function authenticate(DeviceAuthenticateRequest $request): JsonResponse
     {
+        $rawKey = $request->input('device_key');
+        Log::info('device.auth.attempt', [
+            'device_key' => $rawKey,
+            'device_key_length' => is_string($rawKey) ? strlen(trim($rawKey)) : null,
+            'name' => $request->input('name'),
+            'has_password' => $request->filled('password'),
+            'ip' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'has_authorization' => $request->hasHeader('Authorization'),
+        ]);
+
         try {
             $credentials = $request->only(['device_key', 'name', 'password']);
             $result = $this->deviceService->authenticateDevice($credentials);
@@ -44,6 +56,11 @@ class DeviceAuthController extends BaseController
                 'token' => $result['token'],
             ], 'Device authenticated successfully');
         } catch (\Exception $e) {
+            Log::warning('device.auth.failed', [
+                'message' => $e->getMessage(),
+                'device_key' => is_string($rawKey) ? $rawKey : null,
+            ]);
+
             return $this->sendError($e->getMessage(), [], 401);
         }
     }

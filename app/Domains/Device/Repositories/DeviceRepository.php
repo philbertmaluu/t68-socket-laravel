@@ -5,6 +5,9 @@ namespace App\Domains\Device\Repositories;
 use App\Domains\Device\Models\Device;
 use App\Shared\Helpers\PaginationHelper;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DeviceRepository
 {
@@ -71,9 +74,84 @@ class DeviceRepository
         }
 
         // Fallback for mixed-case / whitespace-polluted legacy rows.
-        return Device::query()
+        $device = Device::query()
             ->whereRaw('UPPER(TRIM(device_key)) = ?', [$normalized])
             ->first();
+        if ($device) {
+            return $device;
+        }
+
+        $this->logDeviceKeyMiss($deviceKey, $normalized);
+
+        return null;
+    }
+
+    /**
+     * Explain a failed device-key lookup without changing the login result.
+     * Written to storage/logs so a valid-looking key can be compared with what this database actually has.
+     */
+    private function logDeviceKeyMiss(string $raw, string $normalized): void
+    {
+        $tenantId = null;
+        if (app()->bound('tenant.id') && !empty(app('tenant.id'))) {
+            $tenantId = app('tenant.id');
+        }
+
+        $user = Auth::user();
+        if ($tenantId === null && $user && !empty($user->tenant_id)) {
+            $tenantId = $user->tenant_id;
+        }
+
+        $context = [
+            'reason' => 'key_not_in_this_database',
+            'device_key_raw' => $raw,
+            'device_key_normalized' => $normalized,
+            'device_key_length' => strlen($normalized),
+            // Letter O is 79, digit 0 is 48. Makes lookalike typos visible in the log.
+            'device_key_char_codes' => array_map('ord', str_split($normalized)),
+            'tenant_scope_id' => $tenantId,
+            'auth_user_id' => $user?->id,
+            'db_connection' => DB::connection()->getName(),
+            'db_driver' => DB::connection()->getDriverName(),
+            'db_database' => DB::connection()->getDatabaseName(),
+        ];
+
+        try {
+            $unscoped = Device::withoutGlobalScope('tenant')
+                ->where(function ($query) use ($normalized) {
+                    $query->where('device_key', $normalized)
+                        ->orWhereRaw('UPPER(TRIM(device_key)) = ?', [$normalized]);
+                })
+                ->first();
+
+            if ($unscoped) {
+                $context['reason'] = 'hidden_by_tenant_scope';
+                $context['matched_device_id'] = $unscoped->id;
+                $context['matched_device_name'] = $unscoped->name;
+                $context['matched_tenant_id'] = $unscoped->tenant_id;
+            } else {
+                $trashed = Device::withoutGlobalScope('tenant')
+                    ->withTrashed()
+                    ->where(function ($query) use ($normalized) {
+                        $query->where('device_key', $normalized)
+                            ->orWhereRaw('UPPER(TRIM(device_key)) = ?', [$normalized]);
+                    })
+                    ->first();
+
+                if ($trashed) {
+                    $context['reason'] = 'device_soft_deleted';
+                    $context['matched_device_id'] = $trashed->id;
+                    $context['matched_device_name'] = $trashed->name;
+                    $context['matched_tenant_id'] = $trashed->tenant_id;
+                    $context['matched_deleted_at'] = $trashed->deleted_at?->toDateTimeString();
+                }
+            }
+        } catch (\Throwable $e) {
+            $context['reason'] = 'lookup_diagnostic_failed';
+            $context['error'] = $e->getMessage();
+        }
+
+        Log::warning('device.auth.invalid_device_key', $context);
     }
 
     public function findByName(string $name): ?Device
