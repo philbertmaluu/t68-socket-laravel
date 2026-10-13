@@ -67,16 +67,17 @@ class DeviceRepository
             return null;
         }
 
-        // Exact match first (fast path — keys are stored uppercase).
-        $device = Device::where('device_key', $normalized)->first();
-        if ($device) {
-            return $device;
-        }
-
-        // Fallback for mixed-case / whitespace-polluted legacy rows.
-        $device = Device::query()
-            ->whereRaw('UPPER(TRIM(device_key)) = ?', [$normalized])
+        // Device login is public. The key is unique across tenants, and a new
+        // device is saved under the administrator's tenant. The tenant scope
+        // would hide that row and return "Invalid device key" while older
+        // devices (often tenant 0) still match.
+        $device = Device::withoutGlobalScope('tenant')
+            ->where(function ($query) use ($normalized) {
+                $query->where('device_key', $normalized)
+                    ->orWhereRaw('UPPER(TRIM(device_key)) = ?', [$normalized]);
+            })
             ->first();
+
         if ($device) {
             return $device;
         }
@@ -136,6 +137,7 @@ class DeviceRepository
                         $query->where('device_key', $normalized)
                             ->orWhereRaw('UPPER(TRIM(device_key)) = ?', [$normalized]);
                     })
+  
                     ->first();
 
                 if ($trashed) {
@@ -161,8 +163,10 @@ class DeviceRepository
             return null;
         }
 
-        return Device::where('name', $trimmed)->first()
-            ?? Device::whereRaw('LOWER(TRIM(name)) = ?', [strtolower($trimmed)])->first();
+        return Device::withoutGlobalScope('tenant')->where('name', $trimmed)->first()
+            ?? Device::withoutGlobalScope('tenant')
+                ->whereRaw('LOWER(TRIM(name)) = ?', [strtolower($trimmed)])
+                ->first();
     }
 
     public function create(array $data): Device
