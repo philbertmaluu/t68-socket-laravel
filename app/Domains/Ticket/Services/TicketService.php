@@ -244,7 +244,11 @@ class TicketService
         return TransactionHelper::execute(function () use ($user) {
             [$officeId, $counter] = $this->resolveClerkCounterForCall($user);
 
-            $ticket = $this->waitingTicketsEligibleForCounter($officeId, (string) $counter->id)
+            $businessToday = Carbon::now(TicketNumberAllocator::BUSINESS_TIMEZONE)->toDateString();
+            $nextTicketQuery = $this->waitingTicketsEligibleForCounter($officeId, (string) $counter->id);
+            $this->applyTicketIssuedOnDay($nextTicketQuery, $businessToday);
+
+            $ticket = $nextTicketQuery
                 ->orderBy('queue_position', 'asc')
                 ->orderBy('created_at', 'asc')
                 ->first();
@@ -265,9 +269,12 @@ class TicketService
         return TransactionHelper::execute(function () use ($user, $ticketId) {
             [$officeId, $counter] = $this->resolveClerkCounterForCall($user);
 
-            $ticket = $this->waitingTicketsEligibleForCounter($officeId, (string) $counter->id)
-                ->where('id', $ticketId)
-                ->first();
+            $businessToday = Carbon::now(TicketNumberAllocator::BUSINESS_TIMEZONE)->toDateString();
+            $ticketQuery = $this->waitingTicketsEligibleForCounter($officeId, (string) $counter->id)
+                ->where('id', $ticketId);
+            $this->applyTicketIssuedOnDay($ticketQuery, $businessToday);
+
+            $ticket = $ticketQuery->first();
 
             if (!$ticket) {
                 throw new UnprocessableEntityHttpException(
