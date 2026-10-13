@@ -1067,8 +1067,11 @@ class TicketService
                 ->whereIn('clerk_id', $clerkIds)
                 ->where('status', '!=', 'waiting');
 
+            $businessToday = Carbon::now(TicketNumberAllocator::BUSINESS_TIMEZONE)->toDateString();
+
             if ($scope === 'waiting') {
                 $ticketsQuery = $this->waitingTicketsEligibleForCounter($officeId, $counterId);
+                $this->applyTicketIssuedOnDay($ticketsQuery, $businessToday);
             } elseif ($scope === 'history') {
                 $ticketsQuery = (clone $officerHandledQuery);
             } else {
@@ -1119,24 +1122,31 @@ class TicketService
                 });
             }
 
-            $tickets = (clone $ticketsQuery)
-                ->orderByDesc('created_at')
-                ->get([
-                    'id',
-                    'ticket_number',
-                    'service_type',
-                    'clerk_id',
-                    'status',
-                    'called_at',
-                    'serving_started_at as start_time',
-                    'serving_started_at',
-                    'completed_at',
-                    'duration_seconds',
-                    'transferred_to_counter_id',
-                    'office_id',
-                    'created_at',
-                    'updated_at',
-                ]);
+            $orderedQuery = clone $ticketsQuery;
+            if ($scope === 'waiting') {
+                $orderedQuery
+                    ->orderByDesc('priority')
+                    ->orderBy('queue_position')
+                    ->orderBy('created_at');
+            } else {
+                $orderedQuery->orderByDesc('created_at');
+            }
+
+            $tickets = $orderedQuery->get($this->clerkTicketListColumns());
+
+            if ($scope === 'waiting') {
+                $currentTicket = $this->findTodayActiveClerkTicket(
+                    $officeId,
+                    $clerkIds,
+                    $businessToday,
+                    $filters
+                );
+                if ($currentTicket && !$tickets->contains(
+                    fn (Ticket $ticket) => (string) $ticket->id === (string) $currentTicket->id
+                )) {
+                    $tickets->prepend($currentTicket);
+                }
+            }
 
             $tickets->each(function (Ticket $ticket) use ($officeName) {
                 $ticket->setAttribute('office_name', $officeName);
@@ -1146,9 +1156,13 @@ class TicketService
                 ? strtolower((string) $filters['status'])
                 : null;
 
+            $waitingCountQuery = $this->waitingTicketsEligibleForCounter($officeId, $counterId);
+            if ($scope === 'waiting') {
+                $this->applyTicketIssuedOnDay($waitingCountQuery, $businessToday);
+            }
             $officerWaitingCount = $statusFilter && $statusFilter !== 'waiting'
                 ? 0
-                : (int) $this->waitingTicketsEligibleForCounter($officeId, $counterId)->count();
+                : (int) $waitingCountQuery->count();
             $officerHandledCount = (int) (clone $officerHandledQuery)->count();
 
             $statusCounts = (clone $officerHandledQuery)
@@ -1437,6 +1451,93 @@ class TicketService
     public function paginate(int $perPage = 15, int $page = 1, array $filters = []): array
     {
         return $this->repository->paginate($perPage, $page, $filters);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function clerkTicketListColumns(): array
+    {
+        return [
+            'id',
+            'ticket_number',
+            'service_type',
+            'clerk_id',
+            'status',
+            'called_at',
+            'serving_started_at as start_time',
+            'serving_started_at',
+            'completed_at',
+            'duration_seconds',
+            'transferred_to_counter_id',
+            'office_id',
+            'created_at',
+            'updated_at',
+        ];
+    }
+
+    /**
+     * Clerk's called, serving, or paused ticket issued on the given business day.
+     *
+     * @param  list<string>  $clerkIds
+     * @param  array<string, mixed>  $filters
+     */
+    private function findTodayActiveClerkTicket(
+        string $officeId,
+        array $clerkIds,
+        string $issuedOn,
+        array $filters
+    ): ?Ticket {
+        if ($clerkIds === [] || $officeId === '') {
+            return null;
+        }
+
+        $query = Ticket::query()
+            ->where('office_id', $officeId)
+            ->whereIn('clerk_id', $clerkIds)
+            ->whereIn('status', ['called', 'serving', 'paused']);
+
+        $this->applyTicketIssuedOnDay($query, $issuedOn);
+
+        if (!empty($filters['status']) && $filters['status'] !== 'all') {
+            $status = strtolower((string) $filters['status']);
+            $query->whereRaw('LOWER(status) = ?', [$status]);
+        }
+
+        if (!empty($filters['search'])) {
+            $search = trim((string) $filters['search']);
+            $query->where(function (Builder $inner) use ($search) {
+                $inner
+                    ->where('ticket_number', 'like', "%{$search}%")
+                    ->orWhere('service_type', 'like', "%{$search}%")
+                    ->orWhere('member_name', 'like', "%{$search}%")
+                    ->orWhere('member_number', 'like', "%{$search}%");
+            });
+        }
+
+        return $query
+            ->orderByDesc('called_at')
+            ->orderByDesc('updated_at')
+            ->first($this->clerkTicketListColumns());
+    }
+
+    /**
+     * Tickets issued on the Tanzania business date, with created_at as a fallback.
+     */
+    private function applyTicketIssuedOnDay(Builder $query, string $issuedOn): void
+    {
+        $start = Carbon::parse($issuedOn, TicketNumberAllocator::BUSINESS_TIMEZONE)->startOfDay()->utc();
+        $end = Carbon::parse($issuedOn, TicketNumberAllocator::BUSINESS_TIMEZONE)->endOfDay()->utc();
+
+        $query->where(function (Builder $inner) use ($issuedOn, $start, $end) {
+            $inner->whereDate('issued_on', $issuedOn)
+                ->orWhere(function (Builder $fallback) use ($start, $end) {
+                    $fallback
+                        ->whereNull('issued_on')
+                        ->where('created_at', '>=', $start)
+                        ->where('created_at', '<=', $end);
+                });
+        });
     }
 
     /**
