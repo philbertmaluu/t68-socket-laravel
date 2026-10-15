@@ -1272,6 +1272,9 @@ class TicketService
             ->where('tickets.office_id', $officeId)
             ->when($tenantId, fn ($q) => $q->where('tickets.tenant_id', $tenantId));
 
+        $businessToday = Carbon::now(TicketNumberAllocator::BUSINESS_TIMEZONE)->toDateString();
+        $this->applyTicketIssuedOnDay($baseQuery, $businessToday, 'tickets');
+
         $select = [
             'tickets.id',
             'tickets.ticket_number',
@@ -1530,19 +1533,23 @@ class TicketService
 
     /**
      * Tickets issued on the Tanzania business date, with created_at as a fallback.
+     * Pass a table name when the query joins other tables that also have created_at.
      */
-    private function applyTicketIssuedOnDay(Builder $query, string $issuedOn): void
+    private function applyTicketIssuedOnDay(Builder $query, string $issuedOn, string $table = ''): void
     {
+        $prefix = $table !== '' ? $table.'.' : '';
+        $issuedOnColumn = $prefix.'issued_on';
+        $createdAtColumn = $prefix.'created_at';
         $start = Carbon::parse($issuedOn, TicketNumberAllocator::BUSINESS_TIMEZONE)->startOfDay()->utc();
         $end = Carbon::parse($issuedOn, TicketNumberAllocator::BUSINESS_TIMEZONE)->endOfDay()->utc();
 
-        $query->where(function (Builder $inner) use ($issuedOn, $start, $end) {
-            $inner->whereDate('issued_on', $issuedOn)
-                ->orWhere(function (Builder $fallback) use ($start, $end) {
+        $query->where(function (Builder $inner) use ($issuedOn, $start, $end, $issuedOnColumn, $createdAtColumn) {
+            $inner->whereDate($issuedOnColumn, $issuedOn)
+                ->orWhere(function (Builder $fallback) use ($start, $end, $issuedOnColumn, $createdAtColumn) {
                     $fallback
-                        ->whereNull('issued_on')
-                        ->where('created_at', '>=', $start)
-                        ->where('created_at', '<=', $end);
+                        ->whereNull($issuedOnColumn)
+                        ->where($createdAtColumn, '>=', $start)
+                        ->where($createdAtColumn, '<=', $end);
                 });
         });
     }
