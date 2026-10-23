@@ -49,6 +49,12 @@ class RoleSeeder extends Seeder
                 'role_name' => 'Queue Administrator',
                 'created_by' => 1,
             ],
+            [
+                'module_id' => $cqms->id,
+                'role_code' => 'QCT',
+                'role_name' => 'Queue Coordinator',
+                'created_by' => 1,
+            ],
         ];
 
         // Content Management roles
