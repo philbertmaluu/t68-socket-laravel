@@ -648,35 +648,77 @@ class AuthRepository
     }
 
     /**
-     * Normalize ICTMS / CFMS Pro assign payloads into a single item shape.
+     * Normalize ICTMS / CFMS Pro / HRMS-style assign payloads into a single item shape.
      *
      * CFMS Pro: { user_id (target PFNO), role_id, start_date, end_date, pfno (CREATED_BY) }
      * Legacy:   { PFNO, ROLE_ID, FROM_DATE, TO_DATE, CREATED_BY }
+     * HRMS:     { USER_PFNO|USER_ID, ROLE_ID, FROM, TO, CREATED_BY }
      *
      * @param  array<string, mixed>  $item
      * @return array{PFNO: string, ROLE_ID: int, FROM_DATE: mixed, TO_DATE: mixed, CREATED_BY: mixed}
      */
     public function normalizeAssignRoleItem(array $item): array
     {
-        $hasUserId = array_key_exists('user_id', $item)
-            && $item['user_id'] !== null
-            && trim((string) $item['user_id']) !== '';
+        $targetPfno = $this->firstNonEmptyString($item, [
+            'user_id',
+            'USER_ID',
+            'USER_PFNO',
+            'user_pfno',
+            'PFNO',
+            'pfno',
+        ]);
 
-        if ($hasUserId) {
-            $targetPfno = trim((string) $item['user_id']);
+        // CFMS Pro: when user_id/USER_ID is the target, pfno is CREATED_BY (not the target).
+        $usesCfmsTargetField = $this->firstNonEmptyString($item, ['user_id', 'USER_ID']) !== '';
+        if ($usesCfmsTargetField) {
             $createdBy = $item['CREATED_BY'] ?? $item['created_by'] ?? $item['pfno'] ?? null;
         } else {
-            $targetPfno = trim((string) ($item['PFNO'] ?? $item['pfno'] ?? ''));
+            // Legacy/HRMS: do not treat pfno as CREATED_BY — it is the target above.
             $createdBy = $item['CREATED_BY'] ?? $item['created_by'] ?? null;
+        }
+
+        $roleId = $item['ROLE_ID'] ?? $item['role_id'] ?? null;
+        if ($roleId === null || $roleId === '') {
+            // ICTMS grant rows sometimes send role id as `id` with role_id=null.
+            $roleId = $item['id'] ?? 0;
         }
 
         return [
             'PFNO' => $targetPfno,
-            'ROLE_ID' => (int) ($item['ROLE_ID'] ?? $item['role_id'] ?? 0),
-            'FROM_DATE' => $item['FROM_DATE'] ?? $item['from_date'] ?? $item['start_date'] ?? now()->format('Y-m-d'),
-            'TO_DATE' => $item['TO_DATE'] ?? $item['to_date'] ?? $item['end_date'] ?? null,
+            'ROLE_ID' => (int) $roleId,
+            'FROM_DATE' => $item['FROM_DATE']
+                ?? $item['from_date']
+                ?? $item['start_date']
+                ?? $item['FROM']
+                ?? $item['from']
+                ?? now()->format('Y-m-d'),
+            'TO_DATE' => $item['TO_DATE']
+                ?? $item['to_date']
+                ?? $item['end_date']
+                ?? $item['TO']
+                ?? $item['to']
+                ?? null,
             'CREATED_BY' => $createdBy,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @param  list<string>  $keys
+     */
+    private function firstNonEmptyString(array $item, array $keys): string
+    {
+        foreach ($keys as $key) {
+            if (! array_key_exists($key, $item) || $item[$key] === null) {
+                continue;
+            }
+            $value = trim((string) $item[$key]);
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
     }
 
     /**

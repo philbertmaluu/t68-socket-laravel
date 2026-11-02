@@ -39,19 +39,55 @@ class IctmsAccessService
     /**
      * POST /api/assign-role - assign role(s) to user(s).
      * Each user is found or created from HRP (HRPD) if they do not exist; then the role is assigned.
-     * Accepts legacy ICTMS and CFMS Pro field names.
+     * Accepts legacy ICTMS, HRMS (USER_PFNO), and CFMS Pro field names.
+     * Also unwraps ICTMS wrappers: { payload: [...] } / { data: [...] }.
      */
     public function assignRole(array $payload, bool $failIfAlreadyAssigned = false): void
     {
-        $items = is_array($payload) && isset($payload[0]) ? $payload : [$payload];
+        $items = $this->unwrapAssignItems($payload);
         foreach ($items as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
             try {
                 $this->repository->assignRoleToUser($item, $failIfAlreadyAssigned);
             } catch (\Throwable $e) {
-                Log::warning('ICTMS assign-role item failed', ['item' => $item, 'error' => $e->getMessage()]);
+                Log::warning('ICTMS assign-role item failed', [
+                    'item' => $item,
+                    'raw_payload' => $payload,
+                    'error' => $e->getMessage(),
+                ]);
                 throw $e;
             }
         }
+    }
+
+    /**
+     * @param  array<mixed>  $payload
+     * @return list<array<string, mixed>>
+     */
+    private function unwrapAssignItems(array $payload): array
+    {
+        foreach (['payload', 'data', 'items'] as $key) {
+            if (! isset($payload[$key]) || ! is_array($payload[$key])) {
+                continue;
+            }
+            $inner = $payload[$key];
+            if ($inner === []) {
+                continue;
+            }
+            if (isset($inner[0]) && is_array($inner[0])) {
+                return array_values(array_filter($inner, 'is_array'));
+            }
+
+            return [$inner];
+        }
+
+        if (isset($payload[0]) && is_array($payload[0])) {
+            return array_values(array_filter($payload, 'is_array'));
+        }
+
+        return [$payload];
     }
 
     /**

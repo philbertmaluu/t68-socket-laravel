@@ -112,6 +112,62 @@ class IctmsCfmsProAccessParityTest extends TestCase
         $this->assertSame(1, User::withoutTenant()->where('user_id', '5549003')->count());
     }
 
+    public function test_assign_role_accepts_hrms_user_pfno_and_from_to(): void
+    {
+        $this->postJson('/api/assign-role', [
+            'USER_PFNO' => '5549010',
+            'ROLE_ID' => $this->roleId,
+            'FROM' => now()->format('Y-m-d'),
+            'TO' => now()->addYear()->format('Y-m-d'),
+            'CREATED_BY' => '1000',
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $user = User::withoutTenant()->where('user_id', '5549010')->first();
+        $this->assertNotNull($user);
+        $this->assertSame(1, UserRole::query()
+            ->where('user_id', $user->id)
+            ->where('role_id', $this->roleId)
+            ->count());
+    }
+
+    public function test_assign_role_unwraps_ictms_payload_wrapper(): void
+    {
+        $this->postJson('/api/assign-role', [
+            'payload' => [[
+                'USER_ID' => '5549011',
+                'ROLE_ID' => $this->roleId,
+                'FROM' => now()->format('Y-m-d'),
+                'CREATED_BY' => '1000',
+            ]],
+            'request_id' => '17090129',
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(1, User::withoutTenant()->where('user_id', '5549011')->count());
+    }
+
+    public function test_assign_role_uses_id_when_role_id_null(): void
+    {
+        $this->postJson('/api/assign-role', [
+            'PFNO' => '5549012',
+            'role_id' => null,
+            'id' => (string) $this->roleId,
+            'FROM_DATE' => now()->format('Y-m-d'),
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $user = User::withoutTenant()->where('user_id', '5549012')->first();
+        $this->assertNotNull($user);
+        $this->assertSame(1, UserRole::query()
+            ->where('user_id', $user->id)
+            ->where('role_id', $this->roleId)
+            ->count());
+    }
+
     public function test_legacy_assign_role_skips_duplicate_without_error(): void
     {
         $payload = [
