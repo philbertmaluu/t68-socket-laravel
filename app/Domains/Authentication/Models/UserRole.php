@@ -68,10 +68,17 @@ class UserRole extends Model
         return $query->where('status', 'handover');
     }
 
-   
-
     public function scopeInactive($query)
     {
         return $query->where('status', 'inactive');
+    }
+
+    /**
+     * user_roles has no tenant_id / HasTenant scope. Keep this as a no-op so
+     * callers that mirror User::withoutTenant() (e.g. access revoke) do not 500.
+     */
+    public function scopeWithoutTenant($query)
+    {
+        return $query;
     }
 }
