@@ -123,12 +123,18 @@ All under the API prefix (e.g. `https://your-domain/api/`).
 |--------|------|-------------|
 | GET | `/api/modules` | List system modules. Response: `{ success, status_code: 1, data: [{ id, module_name }], message }` |
 | POST | `/api/module/roles` | Roles for a module. Body: `{ "moduleId": 100 }`. Response: `{ success, status_code: 1, data: [{ role_id, role }], message }` |
-| POST | `/api/assign-role` | Assign role(s). Body: array of `{ PFNO, ROLE_ID, FROM_DATE, TO_DATE, CREATED_BY }`. |
+| POST | `/api/roles` | CFMS Pro alias of `/api/module/roles`. Same body. |
+| POST | `/api/assign-role` | Assign role(s). Legacy body: `{ PFNO, ROLE_ID, FROM_DATE, TO_DATE, CREATED_BY }`. Also accepts CFMS Pro fields. |
+| POST | `/api/cfmspro/assign-roles` | CFMS Pro–compatible grant. Body: `{ user_id, role_id, start_date, end_date, pfno }` (`user_id` = target PFNO, `pfno` = CREATED_BY). Duplicate active role → `"Role Already Exist in User Profile!"`. |
+| POST | `/api/cfmspro/users-profile` | Active roles for PFNO. Body: `{ "pfno" }`. Data: `[{ id, role, role_id, start_date, end_date }]`. |
+| POST | `/api/cfmspro/users-access` | Has any active role. Body: `{ "pfno" }`. Data: `1` or `0`. |
 | GET | `/api/user/roles` | Users grouped by module. Response: nested structure with module and user list. |
 | POST | `/api/module/users` | All roles for one user. Body: `{ "pfno": 5549 }`. Response: `{ success, data: [{ id, pfno, fullname, module_name, role_id, role, from_date, to_date }], message }` |
-| POST | `/api/access/revoke` | Revoke role. Body: `{ "pfno", "role_id", "system_code", "updated_by" }`. |
+| POST | `/api/access/revoke` | Hard-delete role. Body: `{ "pfno", "role_id" }`. Success data: `{ user_name, user_email, role_name, module_name }`, message `Role removed successfully.` |
 
-IDs (`moduleId`, `ROLE_ID`) are our internal database IDs. Use the same IDs when registering with ICTMS so ICTMS sends them back in assign/revoke requests.
+`ictms:register` still registers `ASSIGN_ENDPOINT` as `/api/assign-role`. Use `/api/cfmspro/assign-roles` when ICTMS should follow the CFMS Pro contract against QMS.
+
+IDs (`moduleId`, `ROLE_ID` / `role_id`) are our internal database IDs. Use the same IDs when registering with ICTMS so ICTMS sends them back in assign/revoke requests.
 
 ## System Monitoring Endpoints (ICTMS calls us)
 

@@ -648,18 +648,52 @@ class AuthRepository
     }
 
     /**
-     * Assign role to user (ICTMS assign-role payload item).
+     * Normalize ICTMS / CFMS Pro assign payloads into a single item shape.
+     *
+     * CFMS Pro: { user_id (target PFNO), role_id, start_date, end_date, pfno (CREATED_BY) }
+     * Legacy:   { PFNO, ROLE_ID, FROM_DATE, TO_DATE, CREATED_BY }
+     *
+     * @param  array<string, mixed>  $item
+     * @return array{PFNO: string, ROLE_ID: int, FROM_DATE: mixed, TO_DATE: mixed, CREATED_BY: mixed}
+     */
+    public function normalizeAssignRoleItem(array $item): array
+    {
+        $hasUserId = array_key_exists('user_id', $item)
+            && $item['user_id'] !== null
+            && trim((string) $item['user_id']) !== '';
+
+        if ($hasUserId) {
+            $targetPfno = trim((string) $item['user_id']);
+            $createdBy = $item['CREATED_BY'] ?? $item['created_by'] ?? $item['pfno'] ?? null;
+        } else {
+            $targetPfno = trim((string) ($item['PFNO'] ?? $item['pfno'] ?? ''));
+            $createdBy = $item['CREATED_BY'] ?? $item['created_by'] ?? null;
+        }
+
+        return [
+            'PFNO' => $targetPfno,
+            'ROLE_ID' => (int) ($item['ROLE_ID'] ?? $item['role_id'] ?? 0),
+            'FROM_DATE' => $item['FROM_DATE'] ?? $item['from_date'] ?? $item['start_date'] ?? now()->format('Y-m-d'),
+            'TO_DATE' => $item['TO_DATE'] ?? $item['to_date'] ?? $item['end_date'] ?? null,
+            'CREATED_BY' => $createdBy,
+        ];
+    }
+
+    /**
+     * Assign role to user (ICTMS assign-role / CFMS Pro assign-roles payload item).
      * Creates the user from PFNO only when they do not already exist.
      *
+     * @param  array<string, mixed>  $item
      * @return array{user_id: int, pfno: string, fullname: string, created: bool}
      */
-    public function assignRoleToUser(array $item): array
+    public function assignRoleToUser(array $item, bool $failIfAlreadyAssigned = false): array
     {
-        $pfno = trim((string) ($item['PFNO'] ?? $item['pfno'] ?? ''));
-        $roleId = (int) ($item['ROLE_ID'] ?? $item['role_id'] ?? 0);
-        $fromDate = $item['FROM_DATE'] ?? $item['from_date'] ?? now()->format('Y-m-d');
-        $toDate = $item['TO_DATE'] ?? $item['to_date'] ?? null;
-        $createdByPfno = $item['CREATED_BY'] ?? $item['created_by'] ?? null;
+        $normalized = $this->normalizeAssignRoleItem($item);
+        $pfno = $normalized['PFNO'];
+        $roleId = $normalized['ROLE_ID'];
+        $fromDate = $normalized['FROM_DATE'];
+        $toDate = $normalized['TO_DATE'];
+        $createdByPfno = $normalized['CREATED_BY'];
 
         if ($pfno === '') {
             throw new \InvalidArgumentException('pfno is required');
@@ -683,7 +717,11 @@ class AuthRepository
                 })
                 ->exists();
 
-            if (!$alreadyAssigned) {
+            if ($alreadyAssigned) {
+                if ($failIfAlreadyAssigned) {
+                    throw new \InvalidArgumentException('Role Already Exist in User Profile!');
+                }
+            } else {
                 UserRole::create([
                     'user_id' => $user->id,
                     'role_id' => $roleId,
@@ -704,26 +742,114 @@ class AuthRepository
     }
 
     /**
-     * Revoke a role from a user (set status to inactive).
+     * Hard-delete a role assignment (CFMS Pro / ICTMS access revoke).
+     *
+     * @return array{user_name: string, user_email: string|null, role_name: string, module_name: string}|null
      */
-    public function revokeUserRole(string $pfno, string $roleId, ?string $updatedBy = null): bool
+    public function revokeUserRole(string $pfno, string $roleId, ?string $updatedBy = null): ?array
     {
         $user = User::withoutTenant()->where('user_id', $pfno)->first();
         if (!$user) {
-            return false;
+            return null;
         }
 
-        $updatedByUserId = $updatedBy !== null ? $this->resolveCreatedBy((int) $updatedBy) : null;
+        $row = DB::table('user_roles as ur')
+            ->join('users as u_name', 'u_name.id', '=', 'ur.user_id')
+            ->join('roles as r', 'r.id', '=', 'ur.role_id')
+            ->join('modules as m', 'm.id', '=', 'r.module_id')
+            ->where('ur.user_id', $user->id)
+            ->where('ur.role_id', (int) $roleId)
+            ->whereNull('ur.deleted_at')
+            ->select(
+                'ur.id as user_role_id',
+                'u_name.name as user_name',
+                'u_name.email as user_email',
+                'r.role_name as role_name',
+                'm.name as module_name'
+            )
+            ->first();
 
-        $affected = UserRole::withoutTenant()
+        if (!$row) {
+            return null;
+        }
+
+        $details = [
+            'user_name' => (string) ($row->user_name ?? ''),
+            'user_email' => $row->user_email !== null ? (string) $row->user_email : null,
+            'role_name' => (string) ($row->role_name ?? ''),
+            'module_name' => (string) ($row->module_name ?? ''),
+        ];
+
+        UserRole::query()
             ->where('user_id', $user->id)
             ->where('role_id', (int) $roleId)
-            ->where('status', 'active')
-            ->update([
-                'status' => 'inactive',
-                'updated_by' => $updatedByUserId,
-            ]);
+            ->forceDelete();
 
-        return $affected > 0;
+        return $details;
+    }
+
+    /**
+     * Active roles for one PFNO in CFMS Pro users-profile shape.
+     *
+     * @return list<array{id: string, role: string, role_id: string, start_date: string, end_date: string}>
+     */
+    public function getUserRolesCfmsProProfileFormat(string $pfno): array
+    {
+        $user = User::withoutTenant()->where('user_id', $pfno)->first();
+        if (!$user) {
+            return [];
+        }
+
+        $rows = DB::table('user_roles as ur')
+            ->join('roles as r', 'r.id', '=', 'ur.role_id')
+            ->where('ur.user_id', $user->id)
+            ->whereNull('ur.deleted_at')
+            ->where('ur.status', 'active')
+            ->where(function ($q) {
+                $q->whereNull('ur.end_date')->orWhere('ur.end_date', '>=', now());
+            })
+            ->select(
+                'ur.id',
+                'r.role_name as role',
+                'r.id as role_id',
+                'ur.start_date',
+                'ur.end_date'
+            )
+            ->orderBy('r.role_name')
+            ->get();
+
+        return $rows->map(fn ($row) => [
+            'id' => (string) $row->id,
+            'role' => (string) ($row->role ?? ''),
+            'role_id' => (string) $row->role_id,
+            'start_date' => $row->start_date
+                ? \Carbon\Carbon::parse($row->start_date)->format('d-M-Y')
+                : '',
+            'end_date' => $row->end_date
+                ? \Carbon\Carbon::parse($row->end_date)->format('d-M-Y')
+                : '',
+        ])->values()->all();
+    }
+
+    /**
+     * Whether the PFNO currently has any active role (CFMS Pro users-access → 1|0).
+     */
+    public function userHasActiveAccess(string $pfno): int
+    {
+        $user = User::withoutTenant()->where('user_id', $pfno)->first();
+        if (!$user) {
+            return 0;
+        }
+
+        $exists = UserRole::query()
+            ->where('user_id', $user->id)
+            ->where('status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('end_date')
+                    ->orWhere('end_date', '>=', now());
+            })
+            ->exists();
+
+        return $exists ? 1 : 0;
     }
 }

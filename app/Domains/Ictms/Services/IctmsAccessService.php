@@ -25,7 +25,7 @@ class IctmsAccessService
     }
 
     /**
-     * POST /api/module/roles - roles per module.
+     * POST /api/module/roles | POST /api/roles - roles per module.
      */
     public function getRolesByModule(int $moduleId): array
     {
@@ -39,13 +39,14 @@ class IctmsAccessService
     /**
      * POST /api/assign-role - assign role(s) to user(s).
      * Each user is found or created from HRP (HRPD) if they do not exist; then the role is assigned.
+     * Accepts legacy ICTMS and CFMS Pro field names.
      */
-    public function assignRole(array $payload): void
+    public function assignRole(array $payload, bool $failIfAlreadyAssigned = false): void
     {
         $items = is_array($payload) && isset($payload[0]) ? $payload : [$payload];
         foreach ($items as $item) {
             try {
-                $this->repository->assignRoleToUser($item);
+                $this->repository->assignRoleToUser($item, $failIfAlreadyAssigned);
             } catch (\Throwable $e) {
                 Log::warning('ICTMS assign-role item failed', ['item' => $item, 'error' => $e->getMessage()]);
                 throw $e;
@@ -89,9 +90,27 @@ class IctmsAccessService
     }
 
     /**
-     * POST /api/access/revoke - revoke role from user.
+     * POST /api/cfmspro/users-profile - active roles in CFMS Pro shape.
      */
-    public function revokeAccess(string $pfno, string $roleId, ?string $updatedBy = null): bool
+    public function getUserRolesCfmsProProfile(string $pfno): array
+    {
+        return $this->repository->getUserRolesCfmsProProfileFormat($pfno);
+    }
+
+    /**
+     * POST /api/cfmspro/users-access - 1 if any active role, else 0.
+     */
+    public function userHasActiveAccess(string $pfno): int
+    {
+        return $this->repository->userHasActiveAccess($pfno);
+    }
+
+    /**
+     * POST /api/access/revoke - hard-delete role from user (CFMS Pro contract).
+     *
+     * @return array{user_name: string, user_email: string|null, role_name: string, module_name: string}|null
+     */
+    public function revokeAccess(string $pfno, string $roleId, ?string $updatedBy = null): ?array
     {
         return $this->repository->revokeUserRole($pfno, $roleId, $updatedBy);
     }
@@ -101,11 +120,12 @@ class IctmsAccessService
      * Accepts either:
      * - An array of items: [ { PFNO, ROLE_ID, FROM_DATE?, TO_DATE?, CREATED_BY? }, ... ]
      * - A single object with ROLE_IDS: { PFNO, ROLE_IDS: [id, ...], FROM_DATE?, TO_DATE?, CREATED_BY? }
+     * - CFMS Pro fields: user_id, role_id, start_date, end_date, pfno (created_by)
      * Creates the user from PFNO only when they do not already exist; then each role is assigned.
      *
      * @return list<array{user_id: int, pfno: string, fullname: string, created: bool}>
      */
-    public function assignRolesToUser(array $payload): array
+    public function assignRolesToUser(array $payload, bool $failIfAlreadyAssigned = false): array
     {
         $items = $this->expandAssignRolesPayload($payload);
         if ($items === []) {
@@ -115,7 +135,7 @@ class IctmsAccessService
         $results = [];
         foreach ($items as $item) {
             try {
-                $results[] = $this->repository->assignRoleToUser($item);
+                $results[] = $this->repository->assignRoleToUser($item, $failIfAlreadyAssigned);
             } catch (\Throwable $e) {
                 Log::warning('assign-roles item failed', ['item' => $item, 'error' => $e->getMessage()]);
                 throw $e;
@@ -126,27 +146,24 @@ class IctmsAccessService
     }
 
     /**
-     * Expand assign-roles payload to a flat array of items (each with PFNO, ROLE_ID, FROM_DATE, TO_DATE, CREATED_BY).
+     * Expand assign-roles payload to a flat array of items.
      */
     private function expandAssignRolesPayload(array $payload): array
     {
         $roleIds = $payload['ROLE_IDS'] ?? $payload['role_ids'] ?? null;
         if (is_array($roleIds) && count($roleIds) > 0) {
-            $pfno = $payload['PFNO'] ?? $payload['pfno'] ?? null;
-            if ($pfno === null || $pfno === '') {
+            $normalizedBase = $this->repository->normalizeAssignRoleItem($payload);
+            if ($normalizedBase['PFNO'] === '') {
                 return [];
             }
-            $fromDate = $payload['FROM_DATE'] ?? $payload['from_date'] ?? now()->format('Y-m-d');
-            $toDate = $payload['TO_DATE'] ?? $payload['to_date'] ?? null;
-            $createdBy = $payload['CREATED_BY'] ?? $payload['created_by'] ?? null;
             $items = [];
             foreach ($roleIds as $roleId) {
                 $items[] = [
-                    'PFNO' => $pfno,
+                    'PFNO' => $normalizedBase['PFNO'],
                     'ROLE_ID' => (int) $roleId,
-                    'FROM_DATE' => $fromDate,
-                    'TO_DATE' => $toDate,
-                    'CREATED_BY' => $createdBy,
+                    'FROM_DATE' => $normalizedBase['FROM_DATE'],
+                    'TO_DATE' => $normalizedBase['TO_DATE'],
+                    'CREATED_BY' => $normalizedBase['CREATED_BY'],
                 ];
             }
             return $items;

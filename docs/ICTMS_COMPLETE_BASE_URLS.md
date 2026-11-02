@@ -12,13 +12,15 @@ Use this as the base for all QMS endpoints:
 
 ## Access Management Endpoints (ICTMS -> QMS)
 
+Registered with ICTMS (`ictms:register`):
+
 1. Modules
 - `GET https://queue-dev-api.nssf.go.tz/api/modules`
 
 2. Module Roles
 - `POST https://queue-dev-api.nssf.go.tz/api/module/roles`
 
-3. Assign Role
+3. Assign Role (legacy ICTMS path)
 - `POST https://queue-dev-api.nssf.go.tz/api/assign-role`
 
 4. User Roles (grouped by module)
@@ -29,6 +31,39 @@ Use this as the base for all QMS endpoints:
 
 6. Revoke Access
 - `POST https://queue-dev-api.nssf.go.tz/api/access/revoke`
+
+---
+
+## CFMS Pro–compatible aliases (same ICTMS contract as CFMSPRO)
+
+These mirror CFMS Pro paths/payloads so ICTMS can call QMS the same way.
+
+1. Assign roles (CFMS Pro body)
+- `POST https://queue-dev-api.nssf.go.tz/api/cfmspro/assign-roles`
+- Body: `{ "user_id": "<target PFNO>", "role_id": 123, "start_date": "2024-01-01", "end_date": "2024-12-31", "pfno": "<CREATED_BY PFNO>" }`
+- Success message: `Role assigned to user successful`
+- Duplicate active role: `Role Already Exist in User Profile!`
+
+2. Roles for module (alias of `/api/module/roles`)
+- `POST https://queue-dev-api.nssf.go.tz/api/roles`
+- Body: `{ "moduleId": 100 }`
+
+3. User profile roles
+- `POST https://queue-dev-api.nssf.go.tz/api/cfmspro/users-profile`
+- Body: `{ "pfno": 5549 }`
+- `data`: `[{ id, role, role_id, start_date, end_date }]`
+
+4. Has any access?
+- `POST https://queue-dev-api.nssf.go.tz/api/cfmspro/users-access`
+- Body: `{ "pfno": 5549 }`
+- `data`: `1` or `0`
+
+5. Revoke (same path as registered; CFMS Pro response)
+- `POST https://queue-dev-api.nssf.go.tz/api/access/revoke`
+- Body: `{ "pfno": "<target PFNO>", "role_id": 123 }`
+- Success `data`: `{ user_name, user_email, role_name, module_name }`, message `Role removed successfully.`
+
+Legacy `/api/assign-role` still accepts `{ PFNO, ROLE_ID, FROM_DATE, TO_DATE, CREATED_BY }` and also accepts the CFMS Pro field names above.
 
 ---
 

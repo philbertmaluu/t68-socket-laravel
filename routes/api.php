@@ -9,8 +9,12 @@ use Illuminate\Support\Facades\Route;
 // ICTMS Access Management (called by ICTMS server; no auth)
 Route::get('modules', [IctmsAccessController::class, 'modules']);
 Route::post('module/roles', [IctmsAccessController::class, 'moduleRoles']);
+Route::post('roles', [IctmsAccessController::class, 'moduleRoles']); // CFMS Pro alias
 Route::post('assign-role', [IctmsAccessController::class, 'assignRole']);
 Route::post('assign-roles', [IctmsAccessController::class, 'assignRoles']);
+Route::post('cfmspro/assign-roles', [IctmsAccessController::class, 'assignRolesCfmsPro']);
+Route::post('cfmspro/users-profile', [IctmsAccessController::class, 'usersProfileCfmsPro']);
+Route::post('cfmspro/users-access', [IctmsAccessController::class, 'usersAccessCfmsPro']);
 Route::get('user/roles', [IctmsAccessController::class, 'userRoles']);
 Route::get('user/by-pfno', [IctmsAccessController::class, 'userByPfno']);
 Route::post('module/users', [IctmsAccessController::class, 'moduleUsers']);
